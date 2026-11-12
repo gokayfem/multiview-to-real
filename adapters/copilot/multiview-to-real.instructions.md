@@ -3,9 +3,9 @@ applyTo: "**/*.py"
 ---
 
 Copy this file into your repository's `.github/instructions/`. For agent mode, also install the skill with
-`gh skill install gokayfem/multiview-blockout-to-real multiview-blockout-to-real`.
+`gh skill install gokayfem/multiview-to-real multiview-to-real`.
 
-- Texture grey scenes from several views with the `multiview-blockout-to-real` skill: `mvb2r.py new` → write
+- Texture grey scenes from several views with the `multiview-to-real` skill: `mvb2r.py new` → write
   `case.json` (look, references, descriptions, classes, flags) → `cameras` → `views` → `probe` → `grid` →
   `generate` → `refine` → `targets` → `consistency` → `project` → `score` → (opt-in `resync` or `refit`, then re-run what follows) → `pbr` →
   `render` → `critique` (fresh reviewer) → `report`.

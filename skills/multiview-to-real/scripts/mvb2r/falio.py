@@ -251,7 +251,7 @@ def download(url: str, dest: Path, hosts=DOWNLOAD_HOSTS, deadline_s: float = DOW
     dest.parent.mkdir(parents=True, exist_ok=True)
     handler = type("Redirect", (_SafeRedirect,), {"hosts": tuple(hosts)})()
     opener = urllib.request.build_opener(handler)
-    req = urllib.request.Request(url, headers={"User-Agent": "multiview-blockout-to-real"})
+    req = urllib.request.Request(url, headers={"User-Agent": "multiview-to-real"})
     t0, chunks, total = time.time(), [], 0
     try:
         resp = opener.open(req, timeout=60)

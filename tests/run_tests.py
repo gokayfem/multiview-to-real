@@ -15,7 +15,7 @@ import traceback
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-sys.path.insert(0, os.path.join(os.path.dirname(HERE), "skills", "multiview-blockout-to-real", "scripts"))
+sys.path.insert(0, os.path.join(os.path.dirname(HERE), "skills", "multiview-to-real", "scripts"))
 
 from _util import Skip  # noqa: E402
 

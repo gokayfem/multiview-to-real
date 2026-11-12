@@ -1,6 +1,6 @@
 # Claude (claude.ai Projects)
 
-Prefer the skill: zip the `skills/multiview-blockout-to-real/` folder and upload it under **Settings >
+Prefer the skill: zip the `skills/multiview-to-real/` folder and upload it under **Settings >
 Capabilities > Skills**. Claude then loads `SKILL.md`, the references and the tools on demand. Its code
 environment has no Blender and no fal key, so it can write scene specs and `case.json`, read your sheets and
 tables, and plan cameras and repairs; you run the stages locally.

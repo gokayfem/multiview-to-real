@@ -33,7 +33,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:  # annotations only; numpy is imported lazily where it is used
     import numpy as np
 
-SCRIPTS_DIR = Path(__file__).resolve().parent.parent          # .../skills/multiview-blockout-to-real/scripts
+SCRIPTS_DIR = Path(__file__).resolve().parent.parent          # .../skills/multiview-to-real/scripts
 PACKAGE_DIR = Path(__file__).resolve().parent
 BLENDER_DIR = SCRIPTS_DIR / "blender"
 TEMPLATES_DIR = SCRIPTS_DIR.parent / "templates"
