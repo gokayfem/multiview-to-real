@@ -1,0 +1,6 @@
+numpy
+scipy
+scikit-image
+Pillow
+opencv-python-headless
+fal-client

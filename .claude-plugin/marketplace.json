@@ -1,0 +1,22 @@
+{
+  "name": "multiview-blockout-to-real",
+  "description": "Texture any grey 3D scene in Blender from several calibrated views of one generated photoreal multi-view sheet, with coding agents",
+  "owner": {
+    "name": "gokayfem",
+    "url": "https://github.com/gokayfem"
+  },
+  "plugins": [
+    {
+      "name": "multiview-blockout-to-real",
+      "source": "./",
+      "description": "N calibrated clay views, one multi-reference image edit, a measured consistency score, visibility-aware fusion into each object's UV atlas, and two .blend files: a labelled baked-appearance diagnostic and a relightable PBR scene",
+      "category": "development",
+      "tags": [
+        "blender",
+        "multiview",
+        "texturing",
+        "pbr"
+      ]
+    }
+  ]
+}

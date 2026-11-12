@@ -1,0 +1,464 @@
+# Multiview Blockout 2 Real
+
+**Turn any grey 3D scene into the same scene textured from several calibrated views of one generated photoreal
+multi-view sheet, written back into each object's own UV textures, so it still holds up when the camera moves.**
+A skill for coding agents (Claude Code, Codex, Cursor, Copilot, Gemini) that renders exact clay views and passes
+from N cameras, asks an image model for all of them in one multi-reference edit, measures how far the generated
+views agree with each other, fuses them into every object's UV atlas with visibility tests, and ends in two
+`.blend` files: a baked-appearance diagnostic that says it contains lighting, and an editable, relightable PBR
+scene.
+
+The next step after [Video 2 GLSL](https://github.com/gokayfem/shader-skills),
+[Video 2 Blender Nodes](https://github.com/gokayfem/video-to-blender),
+[Video 2 Physics](https://github.com/gokayfem/video-to-physics),
+[Video to CSS](https://github.com/gokayfem/video-to-css),
+[Image 2 Sculpt](https://github.com/gokayfem/image-to-sculpt) and
+[Blockout 2 Real](https://github.com/gokayfem/blockout-to-real). Blockout 2 Real gives a grey scene real
+materials and light from one fixed camera, and its README lists several cameras as out of scope: from a moved
+camera its fills show. This one takes the same kind of scene and textures it from several cameras at once, and
+reports how much of each object was seen and how much is inferred.
+
+<p align="center"><img src="gallery/hero-clay-target-rerender.jpg" width="100%" alt="Two of six views: the clay render, the generated target of the same view, and the Blender re-render of the projected scene"></p>
+
+<p align="center"><sub>Two of the six views of the first run: clay render (left), generated target (middle), Blender re-render of the scene after multiview projection (right; the baked-appearance diagnostic). Over the six source views the re-render's observed pixels are 27.0 dB PSNR from their targets. A careful viewer sees it: the hair is a smooth shell, the shoes are painted onto a shoe shape that differs a little from the generated one, the floor sun patch is baked into the texture, and a few faint rectangles remain on the back wall. The woman is a fictional person generated for the run, not a real individual.</sub></p>
+
+## Why
+
+Ask an agent to "make this scene look real from every angle" and it usually generates one picture per camera
+and pastes each onto the geometry. Each picture looks fine; the scene does not. The usual failures go unnoticed:
+
+- each view is generated on its own, so the same sofa gets a different weave, the same floor different boards,
+  the same face a slightly different person, and nobody measures how much the views disagree;
+- the image model returns a different size than was asked for, the response does not say so, and a resize is
+  later reported as generated detail;
+- texels are painted from views that cannot see them (occluded, grazing, off the generated object's edge), so
+  background and neighbours leak onto geometry;
+- views are averaged where they disagree, and fabric turns to blotches and faces get double features;
+- the fusion is judged by how well each source view is reproduced, which every method does well, because each
+  view is rebuilt from itself;
+- shading from the generated photos becomes "albedo", the scene is called relightable, and a sun patch stays on
+  the floor after the sun moves;
+- a 360° fly-through is shown with no word on how much of it was ever seen by a camera.
+
+This toolkit gives the agent a method and the tools to do it properly:
+
+- **Calibrated views with exact passes.** Every camera renders a clay view plus object ids, camera-axis depth,
+  world position and normals, and the numbers are checked: reprojection error, depth against camera-axis Z (not
+  ray length) and a cross-check against Blender's own pass.
+- **All views in one call.** The clay views are tiled into one grid of exact cells and sent with the reference
+  images and every full-resolution clay view in a single multi-reference edit, so the model generates the views
+  together. The size it really returned is read from the file.
+- **Refined per view, accepted by a fixed rule.** Each cell gets a high-resolution edit (clay view + cell + grid
+  + references). It is kept only if silhouette overlap, contour distance, landmark offset and colour drift pass
+  thresholds written down before looking; otherwise the cell is kept, and its resize is labelled as a resize.
+- **Agreement is measured before fusing.** A projector-free score maps every pixel of one view into every other
+  through the known geometry and reports, per object, a low band (lighting and colour) and a high band (do the
+  invented details line up).
+- **Visibility-aware fusion into each object's UV atlas.** Every texel is tested in every view (behind,
+  off-image, back-facing, grazing, occluded, wrong object, too close to an edge, low alignment confidence) and
+  sampled only inside the generated mask of its own object. Several fusion methods run on identical inputs.
+- **Scored where it matters.** Leave-one-view-out (fuse from the other views, predict the held-out one) and
+  seam visibility in texture space and in novel views, next to per-object coverage.
+- **Optional repair rounds.** A render-then-refine round lets the image model clean up the projected re-renders
+  so the views share one layout, kept only if the agreement score improves; a silhouette-carving refit fixes
+  geometry such as hair that is larger than what was generated.
+- **Two honest outputs.** A diagnostic `.blend` with the projected appearance (it contains lighting and says so)
+  and a PBR `.blend` whose base colour is the projected photo times a smooth correction, with Principled
+  materials and a light rig fitted to the targets. The residual baked shading is measured and reported.
+- **Measured versus inferred, everywhere.** Coverage per object, inferred surfaces kept plain and labelled, and
+  a tour (a 360° pan inside an enclosing room, an orbit around an object or product scene) rendered a second
+  time with every inferred pixel tinted.
+
+## Any input
+
+| Input | What happens |
+|---|---|
+| A `.blend` with several cameras | the main path: a grey copy with one non-overlapping UV map, a stable id and a description per object; the cameras are kept |
+| A `.blend` with one or no camera | cameras are placed automatically (an arc of views around the subject, an optional close-up on a named object, an optional elevated wide); check the preview sheet and the per-object coverage table |
+| glTF/GLB, OBJ, FBX, USD, PLY, STL | imported, one object per mesh (`--group-by`), then the same |
+| A JSON scene spec of primitives | built in Blender, cameras from the spec or automatic |
+| Only an idea | the agent writes the spec first |
+| Reference images (a character, a product, a material, a style) | sent as extra references with a stated role; never used as geometry |
+| Your own photoreal images of exactly these views | `targets --images`: generation is skipped; everything downstream runs offline |
+| Another image model | a fal multi-reference edit endpoint set in `case.json` `model`. `probe` reads schemas shaped like Seedream's (an `image_size` parameter taking `{width, height}` and an image-URL list); for other schemas it refuses and asks for `model.pixel_cap`, `model.max_refs` and size-parameter overrides in `case.json` |
+| Any number of views (2 to 9) | grid rows x cols chosen automatically; cell size from the verified pixel cap |
+| No API key | the generation stages are unavailable; `targets --images` and `--generator mock` (an offline synthetic image model for tests and demos) work |
+
+After scaffolding, the agent writes the case's `look`, the role of each reference image, and every object's
+description and material class in `case.json` itself; nothing about a particular scene, subject, prompt, number
+of views or image model lives in this repository. Out of scope, and said before starting: glass, mirrors and
+other view-dependent materials; thin foliage and hair strands as geometry; animation; whole-room or 360° claims
+beyond what the cameras see; exact identity preservation; relightable albedo free of baked shading.
+
+## Install
+
+**Claude Code** (plugin marketplace):
+
+```bash
+claude plugin marketplace add gokayfem/multiview-blockout-to-real
+```
+
+```bash
+claude plugin install multiview-blockout-to-real@multiview-blockout-to-real
+```
+
+Or copy the skill: `cp -R skills/multiview-blockout-to-real ~/.claude/skills/`.
+
+**Codex, Cursor, Gemini CLI, Copilot and other agents** (via [skills](https://github.com/vercel-labs/skills)):
+
+```bash
+npx skills add gokayfem/multiview-blockout-to-real
+```
+
+Or install by hand:
+
+- **Codex:** copy `skills/multiview-blockout-to-real` to `~/.agents/skills/`.
+- **Cursor:** copy it to `~/.cursor/skills/`, plus the rule in `adapters/cursor/`.
+- **Copilot:** `gh skill install gokayfem/multiview-blockout-to-real multiview-blockout-to-real`, plus `adapters/copilot/`.
+- **Gemini CLI:** `gemini extensions install https://github.com/gokayfem/multiview-blockout-to-real`.
+
+**claude.ai:** zip `skills/multiview-blockout-to-real` and upload it under Settings > Capabilities > Skills.
+
+**ChatGPT, Gemini Gems and other chat tools:** see [`adapters/`](adapters/).
+
+Requirements: Python 3.10+ with `numpy`, `scipy`, `scikit-image`, `Pillow`, `opencv-python-headless` and
+`fal-client` (`pip install -r requirements.txt`), Blender 4.2 or later, checked at start-up (developed and tested on 5.0.1; `$BLENDER`, `blender` on PATH, or the macOS app; `$MVB2R_BLENDER_TIMEOUT` sets the time limit of a Blender call)
+for every geometry, pass and render stage, ffmpeg for the videos (without it the frames are kept and the
+stage says so), and a fal API key in `FAL_KEY` for the
+generation stages. `python3 skills/multiview-blockout-to-real/scripts/mvb2r.py doctor` checks all of it (the key
+is never printed).
+
+Platforms: 0.1.0 was developed and tested on macOS with Blender 5.0.1. Linux is expected to work (CI runs the
+offline tests on Ubuntu, without Blender). Windows is untested.
+
+## Use
+
+Ask naturally, for example:
+
+- *"Make this blockout look real from all its cameras: `attic.blend`."*
+- *"Here is a grey room with a seated figure and a photo of the person. Texture it from six views so I can move
+  the camera."*
+- *"Put cameras around this product GLB, generate a studio look, and give me a relightable `.blend`."*
+- *"I painted these four views myself. Project them into the scene and tell me how much is covered."*
+
+The agent scaffolds a case, writes the look, the reference roles and the object descriptions, looks at every
+sheet, and runs the stages:
+
+```bash
+python3 skills/multiview-blockout-to-real/scripts/mvb2r.py new cases/attic --input attic.blend --look "sunlit attic study, oak beams, late afternoon" --views 6
+python3 skills/multiview-blockout-to-real/scripts/mvb2r.py run cases/attic --to targets
+```
+
+`run` chains the stages in order within the case budget. Each stage also runs on its own:
+
+| Command | What it does |
+|---|---|
+| `doctor` | Python packages, Blender, `FAL_KEY` (never printed) |
+| `new CASE --input X [--look …] [--views N] [--closeup OBJ] [--reference IMG=role[:obj,…]] [--group-by …] [--resolution PX] [--generator fal\|mock] [--max-calls N] [--edit-endpoint ID] [--no-cameras] [--allow-external-images]` | scaffold: ingest any input, grey copy, UV audit and overlap fix, ids, placeholder descriptions; a failed `new` leaves `case.failed.json` and can simply be re-run; keeps the scene's cameras when it has at least two and `--views` is not given, else places an automatic rig (6 views by default) |
+| `cameras CASE [--replace] [--count N] [--closeup OBJ] [--arc DEG] [--no-elevated]` | (re)place automatic cameras, preview sheet, per-object coverage (seen by at least one / at least two views) |
+| `views CASE [--samples N] [--resolution PX] [--verify-only]` | clay beauty and exact passes per camera, `cameras.json`, numeric verification (reprojection px, `depth_z` against ray length, Blender cross-check) |
+| `grid CASE` | exact rows x cols grid, `layout.json`, ordered references manifest (sheet, case references, one clay copy per view), distinctness check |
+| `probe CASE [--schema-file F] [--check-size]` | fetch the endpoint's schema, record parameters, reference limit and pixel cap in `gen/model.json`; `--check-size` spends one call to check the returned size |
+| `generate CASE` | one multi-reference grid edit at the largest verified native size; seam detection; cell extraction; QA |
+| `refine CASE [--views …]` | per-view high-resolution edits (clay view, cell, sheet, case references), fixed acceptance rule, fallback to the cell |
+| `targets CASE [--images DIR]` | freeze the targets: resample to the calibration resolution (never called new detail), alignment confidence, per-object generated masks, `targets.json`; or take your own `view_XX.png` images |
+| `consistency CASE [--set NAME=PATTERN] [--views …]` | projector-free cross-view reprojection score: low band (lighting and colour) and high band (do invented details line up), per object; any image set can be scored |
+| `project CASE [--method NAME\|all]` | visibility-aware multiview fusion into each object's UV atlas, all maps, `coverage.json`, `diagnostic.blend`, consensus re-renders, novel views |
+| `score CASE [--methods …] [--no-loo]` | leave-one-view-out, seam visibility, sharpness retention, alignment, coverage; contact sheets per view and method |
+| `resync CASE [--method NAME]` | opt-in render-then-refine round on the consensus re-renders (one paid call per view); new targets kept only if `consistency` improves and alignment holds, after which `consistency`, `project`, `score`, `pbr` and `render` must be re-run |
+| `refit CASE [--object NAME] [--mode solid\|shell] [--apply]` | silhouette carving of `refit` objects to their generated masks into a new `blockout_refit.blend`, before/after IoU per view; `--apply` keeps the old blockout as `blockout_pre_refit.blend` (and refuses if that file exists) and switches the case to the carved one |
+| `pbr CASE` | shading basis under the scene's own lights, conservative de-light that keeps projected detail, Principled materials, rig fit to target luminance, `final.blend` |
+| `render CASE [--move] [--tour] [--relight] [--frames N] [--scale S] [--samples N]` | source views, novel views and a camera move between neighbouring cameras (a pair with no valid in-between camera is skipped with a note), a tour (360° pan for enclosing rooms, orbit for object scenes; the mode is in `out/tour.json`) and its coverage-tinted copy with measured/inferred fractions, relight comparison (`out/relight.json`) |
+| `critique CASE [--save FILE]`, `report CASE` | pack sheets for a fresh reviewer and store its answer; write `out/report.md` (method table, native vs resized sizes, calls, measured vs inferred, limits) |
+| `run CASE [--from STAGE] [--to STAGE] [--resync] [--schema-file F]` | views, probe, grid, generate, refine, targets, consistency, project, score, pbr, render, report, in that order within the budget (`probe` is skipped for the mock generator); `resync` only with `--resync`; `cameras`, `probe --check-size`, `refit` and `critique` are run by hand; `logs/run_summary.json` lists what ran and any STALE outputs (refresh with `run CASE --from project`) |
+
+Every paid call goes through the case budget and is logged in `gen/calls.jsonl` with the endpoint, sanitised
+arguments, input hashes, the dimensions read from the returned file and a cost note. `budget.max_calls` (or
+`--max-calls`, or `MVB2R_MAX_CALLS`) counts every started call, failed ones included; cache hits are free, a call
+that would exceed the budget is refused before it starts, and nothing is retried automatically. A `$0` price in
+an endpoint's documentation is recorded as unknown, never as free.
+
+## How a case runs
+
+| Phase | Deliverable | Checked by |
+|---|---|---|
+| Scaffold | `case.json` with look, references, object descriptions and classes; `blockout.blend` | a person reads the descriptions; the UV audit reports 0 overlapping texels |
+| Cameras and views | clay views, ids, `depth_z`, position, normals, `cameras.json`, preview and coverage sheets | reprojection and depth checks in `views/verify/`; the agent looks at the coverage table |
+| Probe and grid | `gen/model.json`, the grid, `layout.json`, the ordered references manifest | the schema's parameters, reference limit and pixel cap; distinct references; optionally the size the endpoint really returns (`probe --check-size`) |
+| Generate and refine | the multi-view sheet, cells, per-view refinements | seam positions, silhouette IoU, contour distance, landmark offset, colour drift; the agent looks at every crop |
+| Targets | frozen `view_XX.png`, `align_conf_XX.png`, `mask_<object>_XX.png`, `targets.json` | native vs resized recorded per view |
+| Consistency | per-object low-band ΔE and high-band correlation | numbers against a one-texture consensus |
+| Project and score | UV textures, source, confidence, coverage and unobserved maps, `diagnostic.blend`, `score.json` | leave-one-view-out, seam visibility, coverage; the agent looks at re-renders and novel views |
+| Resync, refit (opt-in) | new targets; carved geometry | kept only if the score improves and alignment holds; everything downstream re-run |
+| PBR | de-lit textures, materials, fitted rig, `final.blend` | residual shading correlation, luminance ratio per view, the relight sheet |
+| Render and report | renders, novel views, camera move, tours, `relight.jpg`, `report.md` | a fresh reviewer that sees only the images |
+
+## The first run
+
+One room (4.5 x 4 x 2.7 m) with a sofa, a side table, a window and one seated person, six cameras at 1664 x
+1664 (frontal wide, two three-quarter views, a face close-up, a side view, an elevated wide), Seedream 5.5 edit
+on fal, Blender 5.0.1 and Cycles on a Mac. The person is CC0 MakeHuman geometry posed through MPFB; the sofa and
+side table are CC0 Poly Haven models. The run is where every rule below comes from; its numbers are from its
+own reports.
+
+<p align="center"><img src="gallery/grid-clay-and-generated.jpg" width="100%" alt="The 2 x 3 clay grid and the single generated multi-view sheet"></p>
+
+<p align="center"><sub>The clay grid (left) and the one multi-reference edit (right): grid, character reference and the six full-resolution clay views in one call. The edit was asked for and returned at 2628 x 1752; every panel seam landed within 2 px of the ideal 876 px grid. Each 876 px cell was then refined on its own at 2144 x 2144.</sub></p>
+
+**Sizes.** Asked for 4992 x 3328 (16.6 MP), the edit endpoint returned 2504 x 1672 without an error; the
+response reported null dimensions. The largest size returned natively was 2628 x 1752 (99.6% of the documented
+4,624,220-pixel cap). The six per-view refinements were asked for and returned at 2144 x 2144 and downsampled to
+1664 x 1664 for projection; projection samples the native 2144 images.
+
+**Acceptance.** Fixed before looking: person IoU no more than 0.03 below the cell's, contour distance at most 12
+px, head-top offset at most 10 px, colour drift at most 8 ΔE, and a visual pass. One of six refinements failed
+(IoU 0.883 against a floor of 0.889, head 11.5 px too low); its retry passed. Final person IoU against the clay
+was 0.837 to 0.969 across views.
+
+**Agreement between views.** Over all 30 ordered view pairs (34.2 M pixel samples), the independently refined
+targets agreed on lighting and colour to 5.19 ΔE (low band) and on fine detail to a high-band correlation of
+0.161. A re-render of one shared texture scores 0.947 on the same measure. One render-then-refine round brought
+the low band to 3.38 ΔE (35% better) and the high band to 0.244; floor boards went from 0.207 to 0.489. Linen
+weave (0.145 to 0.173), knit (0.058 to 0.059), table grain (0.224 to 0.220) and hair stayed view-specific, and
+shoes got worse (4.79 to 6.09 ΔE).
+
+<p align="center"><img src="gallery/consistency-round.jpg" width="70%" alt="For each of six views: the consensus re-render, the first target, and the target after the consistency round"></p>
+
+<p align="center"><sub>The render-then-refine round. Left: the projected scene re-rendered from each camera (one shared texture, with its smears and seams). Middle: the first targets. Right: the image model's repair of the left column, kept because the cross-view score improved and alignment held in every view. The projections and PBR results below were built from the first targets (middle); the round was measured, not yet projected.</sub></p>
+
+**Fusion.** Three methods ran on identical frozen inputs: best single view per region (A, `best`), an
+agreement-gated blend (B, `blend`) and seam-aware labelling with per-object gain levelling (C, `regions`). On the six source views they are almost
+the same (observed-pixel PSNR 27.6, 27.6 and 27.0 dB), because each view is rebuilt mostly from itself. Seam
+visibility does separate them (seam step to interior step, source / novel views: A 6.3 / 6.4, B 4.1 / 4.0, C 5.5
+/ 5.7), and so do the crops: A pastes one view's sun-patch polygon and a person's shadow into other views, B
+blends linen and plaster into blotches, C keeps one source per region and was the default.
+
+**Seam bake-off.** Every candidate was then scored on the same frozen targets by leave-one-view-out (fuse from
+five views, predict the sixth, PSNR on pixels the other views observed, pixel-weighted) and by the coarse seam
+step in four novel views (in 8-bit levels), with sharpness retention as a floor against blurring. Means over
+floor, back wall, sofa, knit top and skin; first target set, then the consistency-round set:
+
+| Method | LOO PSNR (dB) | Novel-view coarse seam step | Sharpness (first set) |
+|---|---|---|---|
+| best view (A) | 25.02 / not run | 6.54 / not run | 0.83 |
+| labelling + levelling (C, `regions`) | 25.57 / 27.92 | 5.31 / 4.76 | 0.76 |
+| **C labels for the high band + low band blended at σ 8 px (winner)** | **25.64 / 28.17** | 4.49 / 4.29 | 0.75 |
+| best view + low band blended at σ 16 px | 25.58 / 28.11 | 4.47 / 4.04 | 0.79 |
+| 4-band multi-band | 25.52 / 28.05 | 4.43 / 4.26 | 0.74 |
+
+The winner keeps one source view per region for the detail and blends only the smooth lighting and colour. It
+wins clearly on plaster (+0.7 dB, seams about 30% lower) and on the floor (+0.5 dB on the first set, +0.4 dB on
+the second); it ties on linen on the first set and gains 0.9 dB on the second; on the knit top plain labelling
+was better on the first set and the split on the second; face and hands are single-source and within 0.1 dB.
+Graph-cut seam placement added nothing over the split, the gated blend blurs (sharpness 0.61), and registration
+to the consensus gave no real gain at 3 to 10 times the time. The limit is the generated detail itself: in
+leave-one-view-out, the predicted fine detail correlates with the held-out view at only 0.02 to 0.03 on knit,
+0.04 to 0.07 on plaster, 0.12 to 0.17 on linen and 0.14 to 0.39 on the floor; the consistency round raised the
+floor's from 0.14 to 0.39. Fusion cannot make invented detail agree. The second set was refined from a fused
+re-render of the first, so its absolute numbers are optimistic; rankings within a set are fair.
+
+<p align="center"><img src="gallery/novel-views-before-after.jpg" width="100%" alt="Four novel viewpoints: the first projection on the first targets, and the bake-off winner on the consistency-round targets"></p>
+
+<p align="center"><sub>Four viewpoints between the source cameras, where no target exists. Top: labelling (C) on the first targets. Bottom: the bake-off winner on the consistency-round targets. The rectangular patches on the back wall and the staircase on the floor near the feet are gone. The hair is still a smooth shell, and the hands are smeared in the closest view.</sub></p>
+
+<p align="center"><img src="gallery/all-views-clay-target-rerender.jpg" width="60%" alt="All six views: clay, generated target, Blender re-render"></p>
+
+<p align="center"><sub>All six views: clay, target, re-render of the diagnostic scene (method C). The face is taken from the close-up only, each hand and shoe from one view, so they are never blended. Unless a caption says otherwise, every re-render in this README (this sheet, the hero, the hair refit, the relight and the tour) shows method C on the first target set; only the novel-view comparison above shows the bake-off winner.</sub></p>
+
+**Geometry decides realism.** The first blockout had a primitive mannequin and a box sofa, and every generated
+view looked like a CG render. Rebuilt with CC0 MakeHuman geometry and Poly Haven furniture, with the contact
+measured (soles 1.1 to 1.7 mm above the floor, hands 2.2 to 3.4 mm above the thighs), the same kind of prompt
+gave photographic views. The image model follows the clay pose faithfully, so the pose and contact have to be right
+in the blockout.
+
+<p align="center"><img src="gallery/mannequin-vs-real-assets.jpg" width="100%" alt="First blockout with a primitive mannequin and its edit; second blockout with CC0 assets and its edit"></p>
+
+<p align="center"><sub>Top: the first blockout and its edit (asked for 4992 x 3328, silently returned at 2504 x 1672), CG-looking. Bottom: the asset-based blockout and its edit. The hair shell in the bottom clay is still the oversized one that was refitted later.</sub></p>
+
+**Refit.** The hair shell was larger than the generated bob, and from every angle it rendered as a helmet with
+skin-coloured patches. Carving it to the generated hair masks of the six views raised the hair IoU from 0.55 to
+0.75 in the frontal wide view and from 0.63 to 0.84 in the elevated wide view (one view went down, 0.85 to
+0.82), and the close-up's hair PSNR from 18.1 to 24.2 dB.
+
+<p align="center"><img src="gallery/hair-refit.jpg" width="70%" alt="Target, projection onto the old hair shell, projection onto the carved hair shell, for four views"></p>
+
+<p align="center"><sub>Target (left), the projection on the original shell (middle; skin patches and a helmet outline), and on the shell carved to the generated hair masks (right). What remains: a smooth shell with no strands, a flick of shell at one side in view 02, a thin skin line at the hairline.</sub></p>
+
+**PBR.** The base colour is the projected photo times a smooth, clamped correction, never a material prior; an
+earlier version that replaced texture with priors looked like plastic. Residual baked shading: the correlation
+of albedo luminance with the proxy shading is 0.28 (0.59 in the raw targets), and the floor sun patch is 1.4 to
+2.0 times brighter than its surroundings in the albedo (5.5 to 8.8 in the photos). The light rig is the
+blockout's own sun and sky, scaled and white-balanced against the targets: mean luminance ratio 0.98 to 1.04 in
+five views, 0.87 in the face close-up. PBR re-renders are 23.8 dB PSNR from the targets on average, the
+diagnostic 26.2 dB; the diagnostic is the target colour by construction.
+
+<p align="center"><img src="gallery/relight-pbr-vs-diagnostic.jpg" width="100%" alt="PBR scene under the fitted rig and relit, next to the diagnostic scene, which does not change"></p>
+
+<p align="center"><sub>Relit with the sun moved 70° in azimuth. PBR (first two columns): in view 01 the old floor patch collapses (contrast 7.9 to 1.2) and the light lands on the wall; a pale ghost of the old patch remains on the floor. In view 02 the contrast only drops from 6.4 to 4.1. The diagnostic scene (last two columns) does not change at all, which is the point of keeping the two apart.</sub></p>
+
+**Coverage.** Area-weighted over each mesh's surface, the cameras observed 24% of the floor, 41% of the sofa,
+28% of the back wall, 1% of the ceiling, 0% of the wall behind the cameras and 41% of the person (24% of the
+skin, 52% of the trousers). The PBR build, which also rejects near-clipped sun-patch pixels, keeps 23% of the
+floor and 31% of the sofa as measured. A 360° tour through the room was 57% measured and 43% inferred over its
+312 frames: 34% measured on the pan from the room centre, 93% on the arc in front of the sofa.
+
+<p align="center"><img src="gallery/tour-coverage-frames.jpg" width="100%" alt="Six frames of the coverage-tinted tour; inferred pixels are magenta"></p>
+
+<p align="center"><sub>Frames of the coverage-tinted tour; magenta pixels were never seen by a source camera and are plain same-object fills. Turned away from the six cameras, the room is 0% measured.</sub></p>
+
+The run made 26 Seedream calls (one text-to-image for the character, four sheet edits including a size probe,
+21 per-view edits including three retries), all logged. Its cost is unknown: the endpoint documentation listed
+a `$0` price placeholder. Projection took about 5.5 minutes per method set, the PBR build about 40 minutes of
+Blender and Python time.
+
+What a careful viewer sees:
+
+- **Hair is a smooth shell.** Carved to the generated silhouette, painted with strand texture, but with no
+  strands or highlights; the hairline shows a thin line in the close-up.
+- **Shoes and hands.** Laces and soles are re-invented in every view, so they are taken from one view each and
+  disagree with the geometry at their edges; dark slivers remain at finger silhouettes.
+- **Baked light in the diagnostic, a ghost of it in the PBR.** The floor sun patch is in the diagnostic texture;
+  after relighting the PBR scene, pale stepped patches remain where it was.
+- **Faint label steps.** A few faint rectangles on the back wall and steps on the floor in novel views, where
+  fusion switches source view.
+- **Plain fills.** The wall behind the cameras, the ceiling, the floor under the sofa and the person's back are
+  inferred and plain. They are tinted in the coverage tour and listed in the report.
+- **The window is the sky light.** The view through the window is the HDRI, not the generated exterior.
+- **The face close-up renders 13% dark** under the one global rig; no per-view correction is applied.
+
+The failures of the run and the rule each became are in
+[`references/lessons.md`](skills/multiview-blockout-to-real/references/lessons.md).
+
+## A second input
+
+To check that nothing depends on the first scene, the bundled `templates/spec.example.json` (primitives: a
+ground slab, two boxes and a sphere) was run through this repository's own CLI with four automatic cameras and
+real Seedream calls: `probe` on the live schema, `grid`, `generate`, `refine`, `targets`, `consistency`,
+`project` and `score`, two paid calls in all. Nothing about this scene is in the repository's code; the objects
+are described only in the case's `case.json`.
+
+- The sheet came back at exactly the requested 2144 x 2144 and reads as photographs of a pine crate, a teal
+  painted box and a leather ball.
+- One refine was rejected by the acceptance rule and that view fell back to its cell.
+- The image model returned the fourth panel (the elevated view) as a near-copy of the third. The first run of
+  this case projected it anyway: a second copy of the ball and teal patches were smeared across the floor and
+  wall colour landed on object tops, and consistency with that view included was 12.1 ΔE in the low band and
+  0.04 in the high band. That is how the missing per-view gate was found.
+- With the gate, the fourth view is rejected (`targets.json` `usable: false`): its image matches the third
+  view's clay better than its own (0.686 against 0.365), it is a near-duplicate of the third view's image (edge
+  correlation 0.992 while the two clays correlate at 0.505), and its content is offset by 0.099 of the frame.
+  The three remaining views re-render cleanly: no smeared copies, no wall-coloured tops.
+- What remains: the three panels still disagree in exposure and shadows (consistency 9.2 ΔE low band, 0.06
+  high band, against 3 to 5 ΔE on the room scene; leave-one-view-out error 31.8, mean absolute x255; novel-view
+  seam ratio 2.41). The backdrop the model painted behind the objects is not geometry and is not projected (it
+  renders black). The next step would be another `generate` attempt or a different fourth camera.
+
+<p align="center"><img src="gallery/second-input.jpg" width="100%" alt="Primitives scene: four clay views, the generated views with the fourth rejected, and the Blender re-render of the three usable views"></p>
+
+<p align="center"><sub>Clay views (top), generated views from one sheet (middle; the fourth, a near-copy of the third, is rejected by the per-view gate), Blender re-render after projecting the three usable views (bottom; the rejected view is not projected). The black background is the painted backdrop, which has no geometry.</sub></p>
+
+## Security and privacy
+
+- **What leaves your machine.** `generate`, `refine`, `resync` and `probe --check-size` upload images only, and
+  only from inside the case folder: the clay grid, the clay views, the cells, the reference images you gave
+  (copied into `input/` by `new`) and, for `resync`, the projected re-renders. They go to fal storage with the
+  prompt built from `case.json`. `probe` alone only fetches the endpoint's schema. No `.blend`, mesh or texture
+  is sent. Each case's `gen/calls.jsonl` records the endpoints, sanitised arguments and input hashes.
+- **A case folder records local paths.** `case.json` keeps the input's folder (`input.source_dir`) and
+  `gen/model.json` the path of a `--schema-file` if you used one; logs may name files on your machine. Check a
+  case folder before you share it. `cases/` is git-ignored.
+- **Input files are untrusted.** Scripts stored in a `.blend` are never run (Blender is started with
+  `--factory-startup --disable-autoexec` and files are opened with scripts disabled). Names that could not be
+  file names are renamed, and names and texts from a file are treated as labels, never as instructions to the
+  agent. Images and libraries a `.blend` links to are used only when they live inside the input's own folder
+  tree; by default anything outside it is refused or removed, printed, and listed in `case.json`
+  `input.external_images`. **A common case:** a scene that links an HDRI from a shared folder elsewhere loses it,
+  and its world becomes a neutral grey with a warning, so the clay renders are lit differently from the scene
+  you know. Copy the file next to the input, or pass `new --allow-external-images` if you trust the input.
+- **Nothing from a model response is executed.** Downloads are https only, from an allow-list of hosts
+  (`fal.media`, `fal.run`, `storage.googleapis.com` by default; `case.json` `model.download_hosts` changes it),
+  size-limited and decoded as images before they are kept.
+- **The key.** `FAL_KEY` is read from the environment and never printed, logged or written. Keep it out of the
+  repository (`.env*` files are git-ignored).
+
+## Verification
+
+```bash
+python3 tests/run_tests.py           # offline, no key; the Blender round trips skip with a message when Blender is absent
+```
+
+| Check | Where | What it proves |
+|---|---|---|
+| Case contract | `tests/test_common.py`, `tests/test_case.py` | paths, JSON, resize wording, `case.json` and spec validation, input kinds; with Blender: the core stages on the mock generator, stacked UV islands repaired, external images resolved and a missing world image neutralised |
+| Cameras and grid | `tests/test_cameras.py`, `tests/test_grid.py` | projection against closed forms, the OpenCV/Blender conversion, automatic rigs, grid shape, exact cells, reference order and the drop rule |
+| Model layer | `tests/test_model.py` | schema parsing, pixel cap and size choice, only schema parameters sent, the budget refuses before starting, mock calls logged and cached, the fal request built and validated without spending |
+| Targets | `tests/test_targets.py` | the acceptance rule per object, alignment confidence, masks, native and resized sizes recorded with the right words |
+| Consistency | `tests/test_consistency.py` | the cross-view score on synthetic views with known agreement |
+| Fusion | `tests/test_raster.py`, `tests/test_visibility.py`, `tests/test_fusion.py`, `tests/test_score.py` | UV rasterisation, every rejection reason, each fusion method on synthetic stacks, LOO and seam metrics |
+| Refit and PBR | `tests/test_refit.py`, `tests/test_pbr.py` | carving removes only what lies outside the mask and respects other geometry; with Blender, an oversized sphere is carved back; de-light gains are clamped, the mean-albedo bound keeps detail, the rig fit converges, failed fits and skipped de-lights are reported |
+| Untrusted input | `tests/test_security.py` | Blender never starts with auto-run, names cannot leave a folder, the key is scrubbed, file text cannot inject prompt lines, downloads are https images only |
+| Round trip | `tests/test_roundtrip.py` (needs Blender) | a primitives scene with known textures, 4 cameras at 320 px, views perturbed like generated ones (gain and tint fields, small warps, view-specific detail): `project --method all` and `score`, checked for texture PSNR against the truth, object leakage, UV orientation, single-source regions and coverage bookkeeping; a lit variant checks that de-lighting reduces shading correlation |
+
+Run the suite yourself; the count and date of the last full run are in `CHANGELOG.md`.
+
+Two end-to-end runs were made by hand on the finished code:
+
+- **Spec example with the mock generator.** `new` then `run`: every stage completed in about 70 s at 320 px with
+  4 automatic views; reprojection error at most 2.75e-05 px, `depth_z - Zc` at most 2.4e-07 m, ray length minus
+  `depth_z` up to 0.54 m (so the check can tell them apart).
+- **The first run's real scene.** A copy of its 15-object scene with its six cameras at 512 px, using the
+  existing generated images through `targets --images`: `views` verification passed (reprojection at most
+  6.3e-05 px); `consistency` reproduced the experiment's low-band agreement (3.40 ΔE against 3.38 measured at
+  1664 px); `project` and `score` ran for two methods in 66 s. After the fixes listed in `CHANGELOG.md` the
+  skin mesh gets a 1024 px texture (0.98 source pixels per texel in the close-up) and the dotted-face artefact
+  of the earlier run is gone; `regions` against `multiband` there: leave-one-view-out error 9.51 / 9.58, novel-
+  view seam ratio 2.01 / 1.87, sharpness retention 1.12 / 1.11 (mean absolute error x255; lower is better).
+
+On the synthetic round trip, leave-one-view-out error (mean absolute error x255) is 9.04 for `register`, 9.01
+`blend`, 9.06 `freqsplit`, 9.22 `multiband`, 9.75 `best` and 9.88 `regions`: no method wins by much once views
+disagree only in invented detail. (An earlier lead for `register` was a measurement leak and has been fixed.)
+
+The paid path has been exercised once end to end on the second input above: `probe` on the live schema,
+`grid`, `generate`, `refine`, `targets`, `consistency`, `project` and `score`.
+
+Implemented but not yet exercised: `probe --check-size`, and glTF, FBX, USD, PLY and STL inputs and
+`--group-by`. The
+first run's numbers in this README came from the experiment's scripts, from which this code was ported.
+
+CI (`.github/workflows/checks.yml`) runs the tests, `mvb2r.py --help` and a compile of every script on Linux
+without Blender, fal or a GPU. The tests check the tools on inputs with known answers. They do not prove that a
+scene ends up looking real; that is what the contact sheets, the coverage numbers and a fresh reviewer are for.
+
+## Known limits in 0.1.0
+
+- **The de-light and rig fit are simpler than the first run's.** This version applies one smooth gain clamped to
+  0.7 to 1.6 and fits one global scale of the scene's own lights (exposure 0, accepted when the median and
+  90th-percentile luminance ratios are within 10%). It has no sun-direction search, no white-balance fit and no
+  flattening of plain materials. The first run had all three (a ±6° sun search, which left the direction unchanged, a fitted tint, exposure 1.6 EV,
+  plain materials flattened toward their median with gains 0.18 to 2.5), and its PBR numbers in this README
+  come from that pipeline.
+- **The shipped acceptance thresholds are looser than the first run's.** `templates/acceptance.json`: refine
+  IoU margin 0.03, contour distance 12 px, landmark offset 10 px, colour drift 8 ΔE (the same as the first run)
+  but `visual_review_required: false`, where the first run required a visual pass for every view; resync
+  allows an IoU drop of 0.03 and a low-band increase of 1.0 ΔE, where the first run allowed 0.02 and 0.5. Tighten
+  them in the case before the first paid call if you want the first run's rule.
+- **`critique --judge` is reserved** and does nothing yet; use `critique` with a fresh reviewer.
+- **A missing or refused external world image** (an HDRI linked from outside the input's folder, or a relative
+  path that was not copied) is replaced by a neutral grey world with a warning, so the clay lighting differs
+  from the input's (see Security and privacy).
+
+## Layout
+
+```text
+skills/multiview-blockout-to-real/   the skill: SKILL.md, references/, templates/, scripts/ (mvb2r CLI, library, Blender scripts)
+tests/                               python3 tests/run_tests.py (synthetic inputs with known answers, Blender round trips)
+adapters/                            prompts for assistants without skill support
+gallery/                             README images from the first run
+```
+
+Cases and everything they produce live outside the repository (`cases/` is git-ignored).
+
+## Credits
+
+See [CREDITS.md](CREDITS.md). MIT licensed. No third-party assets are bundled; the first run's scene used CC0
+models from Poly Haven and MakeHuman (through MPFB), which you download yourself.

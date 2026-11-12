@@ -1,0 +1,17 @@
+{
+  "name": "example",
+  "input": {"path": "input/scene.blend", "sha256": "written by new", "kind": "blend"},
+  "look": "place, style, time of day, light - written by the agent",
+  "references": [{"path": "input/ref_01_subject.png", "role": "identity", "applies_to": ["Subject_Body"], "note": "who/what it defines"}],
+  "objects": [{"name": "Sofa", "id": 10, "description": "material, colour, finish", "class": "fabric", "group": null,
+               "detail_critical": false, "prefer_view": null, "refit": false, "opening": false}],
+  "views": {"resolution": 1024, "cameras": [{"name": "view_01", "camera": "Camera", "role": "frontal wide", "source": "existing"},
+                                                {"name": "view_02", "camera": "Camera.001", "role": "close-up", "source": "existing"}],
+            "auto": {"count": 6, "arc_degrees": 120, "closeup": null, "elevated": true}},
+  "grid": {"rows": null, "cols": null, "source": "auto"},
+  "model": {"provider": "fal", "edit_endpoint": "bytedance/seedream/v5.5/edit", "generator": "fal",
+            "download_hosts": ["fal.media", "fal.run", "storage.googleapis.com"]},
+  "budget": {"max_calls": 30},
+  "fusion": {"method": "auto"},
+  "pbr": {"delight": "conservative"}
+}

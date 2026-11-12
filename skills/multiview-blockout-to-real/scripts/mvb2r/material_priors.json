@@ -1,0 +1,17 @@
+{
+ "_doc": "Restrained, generic material priors. albedo_lum = plausible LINEAR luminance range of the base colour (bounds the per-object MEAN only; measured texture detail is kept); roughness / specular = Principled values (nothing glossy by default); bump = Bump strength from the high-passed albedo luminance.",
+ "classes": {
+  "plaster": {"albedo_lum": [0.45, 0.80], "roughness": 0.92, "specular": 0.2, "bump": 0.05},
+  "paint":   {"albedo_lum": [0.05, 0.85], "roughness": 0.75, "specular": 0.3, "bump": 0.02},
+  "wood":    {"albedo_lum": [0.08, 0.45], "roughness": 0.6,  "specular": 0.35, "bump": 0.04},
+  "fabric":  {"albedo_lum": [0.03, 0.70], "roughness": 0.95, "specular": 0.15, "bump": 0.10},
+  "knit":    {"albedo_lum": [0.03, 0.65], "roughness": 0.97, "specular": 0.1, "bump": 0.15},
+  "leather": {"albedo_lum": [0.03, 0.55], "roughness": 0.6,  "specular": 0.35, "bump": 0.05},
+  "skin":    {"albedo_lum": [0.10, 0.50], "roughness": 0.65, "specular": 0.35, "bump": 0.02},
+  "hair":    {"albedo_lum": [0.01, 0.50], "roughness": 0.75, "specular": 0.3, "bump": 0.08},
+  "metal":   {"albedo_lum": [0.30, 0.85], "roughness": 0.45, "specular": 0.5, "bump": 0.02, "metallic": 0.0},
+  "plastic": {"albedo_lum": [0.03, 0.80], "roughness": 0.55, "specular": 0.4, "bump": 0.01},
+  "stone":   {"albedo_lum": [0.08, 0.60], "roughness": 0.85, "specular": 0.25, "bump": 0.08},
+  "generic": {"albedo_lum": [0.03, 0.85], "roughness": 0.8,  "specular": 0.3, "bump": 0.03}
+ }
+}

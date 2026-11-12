@@ -1,0 +1,5 @@
+{
+  "name": "multiview-blockout-to-real",
+  "version": "0.1.0",
+  "description": "Turn any grey 3D scene into the same scene textured from several calibrated views of one generated photoreal multi-view sheet in Blender: exact passes, one multi-reference edit, a measured consistency score, visibility-aware fusion into each object's UV atlas, a labelled diagnostic .blend and a relightable PBR .blend."
+}

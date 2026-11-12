@@ -1,0 +1,23 @@
+{
+  "name": "multiview-blockout-to-real",
+  "displayName": "Multiview Blockout 2 Real",
+  "version": "0.1.0",
+  "description": "Turn any grey 3D scene (a .blend, a mesh file, a JSON scene spec or an idea) into the same scene textured from several calibrated views of one generated photoreal multi-view sheet: exact clay views and passes from N cameras, one multi-reference image edit, per-view refinement with a fixed acceptance rule, a measured cross-view consistency score, visibility-aware fusion into each object's own UV atlas scored by leave-one-view-out and seam visibility, and two outputs: a baked-appearance diagnostic .blend and an editable, relightable PBR .blend, with coverage reported as measured versus inferred.",
+  "author": {
+    "name": "gokayfem",
+    "url": "https://github.com/gokayfem"
+  },
+  "homepage": "https://github.com/gokayfem/multiview-blockout-to-real",
+  "repository": "https://github.com/gokayfem/multiview-blockout-to-real",
+  "license": "MIT",
+  "keywords": [
+    "blender",
+    "multiview",
+    "texture-projection",
+    "pbr",
+    "texturing",
+    "cycles",
+    "scenes",
+    "fal"
+  ]
+}

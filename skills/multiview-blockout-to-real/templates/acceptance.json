@@ -1,0 +1,36 @@
+{
+  "_doc": "Acceptance rules fixed BEFORE looking at results (copied into each case by `new`; edit there, not after seeing outputs). \"cell\" gates every generated view (grid cell after `generate`, and the frozen image in `targets`); \"refine\" decides whether a refined view replaces its cell; \"resync\" decides whether a render-then-refine round is kept. Pixel thresholds are stated at 1664 px and scaled to the case's calibration width.",
+  "cell": {
+    "_doc": "experiment: usable cells had object IoU 0.83-0.97; IoU below ~0.6, no reliably segmented object, or a panel that matches ANOTHER view's clay (duplicate / swapped panel) was a failure; a global offset of the content vs its clay above max_offset_frac of the width (edge phase correlation) also fails, because masks are only searched in a narrow band around the clay outline",
+    "min_mean_iou": 0.75,
+    "min_object_iou": 0.6,
+    "min_reliable_objects": 1,
+    "min_object_fraction": 0.002,
+    "checked_reliabilities": [
+      "high",
+      "moderate"
+    ],
+    "panel_match_margin": 0.15,
+    "max_offset_frac": 0.04,
+    "offset_min_response": 0.1,
+    "duplicate_min_corr": 0.8,
+    "duplicate_excess_over_clays": 0.25
+  },
+  "refine": {
+    "iou_vs_cell_margin": 0.03,
+    "chamfer_mean_max_px_at_1664": 12.0,
+    "landmark_offset_max_px_at_1664": 10.0,
+    "dE_vs_cell_max": 8.0,
+    "min_object_fraction": 0.002,
+    "checked_reliabilities": [
+      "high",
+      "moderate"
+    ],
+    "visual_review_required": false
+  },
+  "resync": {
+    "iou_drop_max": 0.03,
+    "min_ncc_high_gain": 0.0,
+    "max_dE_low_increase": 1.0
+  }
+}

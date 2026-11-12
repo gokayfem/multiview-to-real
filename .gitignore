@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Secrets and editors
+.env*
+!.env.example
+.idea/
+.vscode/
+.DS_Store
+
+# Cases and everything they produce (never committed)
+cases/
+runs/
+demo/
+.cache/
+tests/out/
+**/raw/
+calls.jsonl
+
+# Large or binary outputs
+*.blend
+*.blend[0-9]*
+*.exr
+*.npz
+*.mp4
+*.mov
+*.glb
+
+# Logs and partial downloads
+*.log
+*.part
+*.tmp
