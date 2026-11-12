@@ -1,5 +1,32 @@
 # Changelog
 
+## [Unreleased]
+
+Documentation only: the findings of a third input, a rigid scene without people (two walls, a floor, an oak
+cabinet of five parts and a terracotta block; six cameras; ten logged Seedream calls, cost unknown). That run
+was made with a separate set of experiment scripts, not with this repository's CLI. No code or test changed,
+and the suite was not re-run for this change (no test reads the documents).
+
+- README: a new section, "A third input", with four gallery images: the clay grid and the accepted sheet, a
+  registration overlay, clay / target / unlit re-render / relightable render for two views, and a relight
+  pair. It states which numbers come from that run's own tools and are not comparable with the tables of the
+  first run.
+- `references/lessons.md`: nineteen new entries marked *(third input)* and four existing entries extended
+  with what was seen again. The main ones: every per-view refinement sat further from the geometry than the
+  cell it came from; whole rigid objects were displaced, each by its own amount (up to 31 px at 2144 px), and
+  a bounded map per object brought edges back to 1 to 2 px, which qualifies "no global warp" for rigid scenes;
+  the same surface differed between views by a luminance factor of 0.3 to 3.4; the reference image's unwanted
+  features were copied into every view; one sentence per part fixed grain direction across the sheet; a tone
+  fitted per object turned one oak into five; reviewers saw only the frames that existed when their packets
+  were made.
+- `references/generation.md`, `consistency.md` and `validation.md`: short notes that point to those entries
+  (check the references and state texture direction before the sheet call; a refinement can cost alignment;
+  an exact-size sheet can have seams 8 px off the lattice; rigid objects and displacement; what a reviewer
+  was given).
+- Known limits: this repository has no stage that registers a generated view to the calibrated geometry per
+  object. How its gates and scores behave on the third input has not been measured; running the CLI on that
+  scene with `targets --images` is the open next step.
+
 ## [0.2.0] — 2026-11-12
 
 The fix rounds that followed an independent review of the first run, ported into the toolkit, reviewed and run

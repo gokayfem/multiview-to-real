@@ -31,7 +31,7 @@ skills/multiview-blockout-to-real/   the skill (this is what gets installed)
 tests/                               python3 tests/run_tests.py [module ...]; Blender round trips skip without Blender;
                                      roundtrip/ holds their scene builders; CI in .github/workflows/checks.yml
 adapters/                            copy-in prompts for tools without skill support
-gallery/                             README images from the first run
+gallery/                             README images from the first run and the second and third inputs
 .claude-plugin/                      Claude Code plugin + marketplace manifests
 ```
 

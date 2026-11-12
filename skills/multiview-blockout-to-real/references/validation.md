@@ -90,6 +90,11 @@ the review yourself; a reviewer who has seen the pipeline grades the pipeline. N
 relight sheet are not packed: show them to the user, or to a second fresh reviewer by hand. (`--judge` is reserved
 for a blind judge of final renders and does nothing in this version.)
 
+Give a reviewer finished outputs only, and write down what it opened. On a later scene three reviewers each saw
+the first 37 to 43 frames of a 192-frame camera move, because the move was still rendering when their packets
+were made, and the report first read as if they had seen all of it. A change made after the last review is
+unreviewed: review the delivered state, or say that it was not reviewed.
+
 ## 5. The report
 
 `report CASE` writes `out/report.md` from the files that exist, and says which command produces any missing

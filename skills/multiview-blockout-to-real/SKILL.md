@@ -235,6 +235,6 @@ and a call that would exceed it is refused before it starts.
 | `references/pbr.md` | de-lighting, materials, the rig fit, direct-light patch synthesis, relight honesty |
 | `references/validation.md` | round trip, leave-one-view-out, the fresh reviewer, full-size crops and rounds, the report |
 | `references/conventions.md` | coordinates, depth, pixel convention, file formats, case layout |
-| `references/lessons.md` | what went wrong in the first run and the rule each failure became |
+| `references/lessons.md` | what went wrong in the first run, its fix rounds and a later rigid scene, and the rule each failure became |
 
 Template: `templates/CONTRACT.md` (copied into every case; fill it before the first paid call).

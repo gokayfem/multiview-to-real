@@ -33,6 +33,15 @@ text, extra people or moved furniture. `grid` checks that the references are dis
 endpoint's verified reference limit is exceeded, the per-view clay copies are dropped from the last view
 backwards (the first views keep theirs), and `grid/references.json` lists what was dropped.
 
+Two things to settle before the call, both from a later rigid scene (`lessons.md`, *third input*):
+
+- **Look at each reference for features the geometry does not have.** A reference is copied closely. A darker
+  band across a cabinet's doors in the appearance reference came back in all six views; an edit asking to
+  remove it from the reference changed nothing. Replace the reference or accept the feature in writing.
+- **State the direction of a directional texture for each part** (wood grain, brushed metal, weave, planks):
+  "along the length of the top, horizontal on the doors, vertical on the side panels". Without it one sheet
+  drew door grain horizontally in two panels and vertically in four; with it all six agreed.
+
 ## Probing sizes
 
 `probe CASE` runs before `grid` (the grid's cell size comes from the pixel cap). It fetches the endpoint's schema
@@ -59,7 +68,9 @@ sheet, recording what came back (implemented, not yet exercised). Rules from the
 `generate CASE` makes one call at the largest verified native size. Then it measures the panel seams (the
 peak of the mean adjacent-pixel difference within a few percent of each ideal seam), extracts each cell with its
 measured rectangle and writes QA sheets. In the first run the seams of the accepted asset-based sheet were all
-within 2 px of the ideal 876 px grid; the earlier, downsized sheet was off by up to 5.3 px.
+within 2 px of the ideal 876 px grid; the earlier, downsized sheet was off by up to 5.3 px. On a later sheet
+returned at exactly the requested 2592 x 1728, the row seam was 8 px from the 864 px lattice, so an exact size
+does not mean exact cells.
 
 Look at the whole sheet and at every cell next to its clay view. Reject and regenerate (within the budget)
 when panels are merged, an object moved, a person was added or the pose changed. A size probe at a slightly
@@ -74,6 +85,11 @@ references in order: the clay view, its cell, the accepted sheet, then the case'
 from the end at the model's limit, and said in the log). A retry is `refine CASE --views view_XX --attempt 2`. The prompt asks for a single full-frame photograph of that view, with the geometry of the
 clay view, the appearance of the cell, and no new scene detail. Refinement adds real detail (weave, grain, knit,
 skin, hair strands) because the model draws at a higher resolution, not because pixels were added afterwards.
+
+A refinement is also a new picture, and it can sit further from the geometry than its cell. On a later rigid
+scene every one of six did (global shift 5.7 to 11.3 px at 2144 px against 2.6 to 9.9 px for the cells in the
+same units), and the views were no closer to each other in colour afterwards. That is what the acceptance rule
+below is for; read its alignment numbers next to the cell's before keeping a refinement for its sharpness.
 
 ## Acceptance
 
@@ -100,6 +116,12 @@ low); its one retry passed. A view that still fails falls back to its cell, upsa
 No registration warp is applied unless two independent estimators (mask fit and edge-based ECC) agree within 2
 px with a shift of at most 4 px and a scale within 1%. In the first run they never agreed: the residuals were
 local (pose, silhouette), and a global warp would have moved correct pixels to fix wrong ones.
+
+On a rigid scene the residuals have another shape. Whole objects were displaced, each by its own amount (up
+to 31 px at 2144 px), and one bounded map per object, estimated against the calibrated passes and applied only
+when sampling colour, brought the edges back to 1 to 2 px. This repository has no such stage. For a scene of
+rigid objects with straight edges, overlay every object's clay edges on its target before `project` and
+report the displacement per object (`lessons.md`).
 
 ## Targets
 

@@ -416,6 +416,115 @@ are described only in the case's `case.json`.
 
 <p align="center"><sub>Clay views (top), generated views from one sheet (middle; the fourth, a near-copy of the third, is rejected by the per-view gate), Blender re-render after projecting the three usable views (bottom; the rejected view is not projected). The black background is the painted backdrop, which has no geometry.</sub></p>
 
+## A third input
+
+A rigid scene with no people, to see what is left when the first run's geometry problems (a hair shell, hands,
+a face on a generic head) cannot occur: two plaster walls and a limestone floor, one closed oak cabinet on a
+plinth and one terracotta block on its top, nine objects in all, six cameras on a 90° arc at 1664 x 1664,
+Seedream 5.5 edit on fal, Blender 5.2.2 and Cycles. **It was run with a separate set of experiment scripts, not
+with this repository's CLI.** It tests the method and the rules, not this code, and its registration and
+material steps do not exist here. This repository's CLI has not been run on this scene. Every number below is
+from that run's own reports.
+
+<p align="center"><img src="gallery/third-input-grid.jpg" width="100%" alt="The 2 x 3 clay grid of the cabinet scene and the generated multi-view sheet"></p>
+
+<p align="center"><sub>The clay grid (left) and the accepted sheet (right): grid, one appearance reference and the six full-resolution clay views in one call, asked for and returned at 2592 x 1728.</sub></p>
+
+**Sizes and calls.** Ten paid calls: one text-to-image call for the appearance reference, one corrective edit of
+it, two sheet edits and six per-view edits. Asked for 4992 x 3328, the edit endpoint again returned 2504 x 1672
+without an error. The second sheet came back at exactly the requested 2592 x 1728. Its panel seams were
+measured at 862|863 and 1729|1730 px (columns) and 871|872 px (row) against 864 px cells: 1 and 2 px off the
+lattice for the columns and 8 px for the row, on a sheet of the exact size. The six refinements were asked for and returned at 2144 x
+2144. The cost is unknown; the price is still a `$0` placeholder.
+
+**What the prompt and the reference controlled.** Layout, framing, object count and materials held in every
+panel. The first sheet drew the door grain horizontally in two panels and vertically in four; one added
+paragraph stating the grain direction of each part made all six agree. The appearance reference had a darker
+band across the doors that the scene design did not. One edit asking to remove it changed nothing (mean
+difference 1.8 of 255), and the band is in all six views of the sheet.
+
+**Geometry.** Each generated object sits a little off the calibrated geometry, and each by a different amount:
+the cabinet is drawn up to about 2% narrower, the block drifts on its own, and in one view the line between
+floor and wall is about 25 px low. Refinement made this worse. The global shift was 1.0 to 4.0 px in the 864 px
+cells (2.6 to 9.9 px in 2144 px units) and 5.7 to 11.3 px in the 2144 px refinements, larger in every view, and
+the block's overlap with its clay fell in five of six views. That run then estimated one bounded affine map per
+rigid group (room, cabinet, block), refined per visible flat face, from edges matched against the calibrated
+passes, and applied it only when sampling colour; cameras and geometry were not touched. The median edge
+residual went from 2.6 to 22.0 px down to 0.9 to 2.0 px, with displacements of up to 31 px in the image and
+up to 30 mm on the surface. A separate alignment tool then measured a global shift of 0.3 to 1.5 px and a block IoU of 0.94 to
+0.99 (0.78 to 0.95 before). One view's room had no usable edge and kept the identity map at lowered confidence.
+The estimator was first checked on a synthetic case with known, different displacements per object: it
+recovered them to within 1.7 px and flagged a block moved 110 px instead of registering it. That check, not
+the real-data run made before it, found three faults in the estimator's first version; in one of them the
+cabinet's far end had slid 5 to 12 px while the edge residual read about 0.5 px.
+
+<p align="center"><img src="gallery/third-input-registration.jpg" width="100%" alt="One generated view with the calibrated edges in cyan and their registered positions in magenta, full frame and a full-size crop"></p>
+
+<p align="center"><sub>View 02 at 2144 px, full frame and a crop at 100%. Cyan: where the calibrated geometry puts each edge. Magenta: where the registration finds it in the generated image. The block, the cabinet and the line between floor and wall are each displaced by a different amount, so one warp per image would not have fitted.</sub></p>
+
+**Agreement between views.** Measured with that run's own tool, whose numbers are not the low and high bands
+of `consistency` here and cannot be compared with the tables above. Each view's colour difference against the
+others was 4.8 to 9.2 ΔE2000 for the refinements and 4.4 to 8.2 for the cells, so refining each view on its own
+did not bring the views closer. The same door surface differs between two views by a luminance factor of 0.3
+to 3.4; the walls and the floor by 0.7 to 1.5. High-pass detail correlation is about 0 as generated (-0.02 to
+0.03 per view) and 0.05 to 0.13 after registration: 0.22 to 0.27 on the door fronts, 0.05 to 0.09 on the
+cabinet top, about 0.01 on the floor and the back wall. Part of the missing agreement on the doors was
+displacement; on the floor and the walls each view has its own texture.
+
+**Fusion.** Best view per region (A), a blend of agreeing samples (B) and seam-aware regions with levelling (C)
+ran on identical frozen inputs. Re-rendered unlit through the six source cameras and compared with the
+registered, exposure-compensated targets away from face boundaries, their mean absolute error is 8.9, 8.3 and
+9.0 of 255 and their SSIM 0.879, 0.917 and 0.893. The mean colour step across seams is 17.0 for A, 3.0 for B and
+5.8 for C (8-bit levels), and B draws 208 m of seam against 42 m for A and C. B has the best numbers and
+visibly softer grain at 100%; C was kept. The same code re-renders known textures to 1.7 of 255, so the
+remaining 8 to 9 is the views disagreeing with each other. Inside those masks registration barely moved the
+error (12.7 to 12.5 before exposure compensation) and raised SSIM by about 0.06. The per-view gains the solver
+wanted on the cabinet were 0.47 to 1.72, so its ±25% bound was widened to 0.4 to 2.5 (C's seam step is 6.6
+with the ±25% bound and 5.8 with the wider one). No leave-one-view-out score was made in that run, so by this repository's own
+rule the choice rests on seams and crops only.
+
+<p align="center"><img src="gallery/third-input-clay-target-rerender.jpg" width="100%" alt="Two views: clay, generated target, unlit re-render of the fused textures, and the relightable scene"></p>
+
+<p align="center"><sub>Views 03 and 02: clay, frozen generated target, unlit re-render of the fused textures (method C; it contains the generated lighting) and the relightable scene under its fitted light. The darker band across the doors comes from the appearance reference. It is in every generated view and in the unlit textures, and was removed only from the relightable base colour.</sub></p>
+
+**Relightable scene.** One base tone per material class and a bounded detail layer come from the fused
+textures divided by the irradiance of one fitted rig; roughness, bump and every unobserved face are labelled
+priors. Fitted per object, the five oak parts came out as five different oaks, from (0.22, 0.12, 0.06) to
+(0.59, 0.36, 0.20) in linear RGB, and one of them had seven usable texels; tied per class they are one oak. The
+joint light fit kept the area light and set the uniform fill to zero. That explains about 92% of the luminance
+variation and leaves soft, flat light with almost no darkening where the plinth meets the floor. Against the
+registered, exposure-compensated targets the relightable renders score 14.0 of 255 and SSIM 0.891.
+
+<p align="center"><img src="gallery/third-input-relight.jpg" width="80%" alt="The relightable cabinet scene under its fitted light and with the light moved"></p>
+
+<p align="center"><sub>The relightable scene under its fitted light (left) and with the light moved to the front-left, made smaller and warmer (right), same camera and exposure. The shadows follow the light and nothing stays at the old shadow position. The flat look on the left is the fit: one large soft light and no fill.</sub></p>
+
+**Review.** Three fresh reviewers, one per build, saw only images. All three found the final renders matching
+the grey geometry, one cabinet and one block in every image, no doubled edges and no colour of one object on
+another. With rigid boxes the defects of the first run's head and hands did not appear. What they found instead
+was generation and material: the reference's band on the doors and, once it was removed, a faint stripe where
+two grain patterns meet; a paler patch on the wall where two source views met; almost no contact shadow under
+the plinth; colours drifting from the references. A variant that dropped the photographed detail on the walls
+and the floor to remove the wall patch was rated worse than the patch (flat paint, severity 4 against 3) and
+was reverted. Two things weaken that review. The delivered state, after the revert, was looked at only by the
+builder. And each reviewer saw only the first 37 to 43 of the 192 camera-move frames, because the move was
+still rendering when the packets were made.
+
+**Coverage** (method C, area-weighted over each whole mesh): floor 13%, back wall 26%, left wall 5%, each door
+48%, cabinet top 44%, block 59%. Per visible face: the door fronts 100%, the top's upper face 88%, the floor's
+upper face 28%. The supported region is the 90° arc of the six cameras.
+
+**One decision this repository's rule would not have allowed.** The run's drift check rejected all six
+refinements as generated and four of them again after registration; the builder accepted those four on a
+visual check. Under the rule here they would have fallen back to their cells. Which choice gives the better
+texture was not measured.
+
+The findings of this run and the rule each became are in
+[`references/lessons.md`](skills/multiview-blockout-to-real/references/lessons.md), marked *(third input)*. Two
+of them qualify statements made after the first run. A global warp was again the wrong tool, but on rigid
+objects a displacement per object was measurable and worth correcting; this repository has no stage for that
+yet. And brightness between views differed by a factor, not by a few percent.
+
 ## Security and privacy
 
 - **What leaves your machine.** `generate`, `refine`, `resync` and `probe --check-size` upload images only, and
@@ -559,6 +668,11 @@ scene ends up looking real; that is what the contact sheets, the coverage number
 - **The leak count is blind to displaced content.** It counts texels whose source pixel belongs to another
   object within the margins; generated content shifted further than that scores zero and has to be seen in the
   crops.
+- **No registration of a generated view to the calibrated geometry.** The `register` method moves views towards
+  the fused consensus, which is a different thing. On the third input whole rigid objects sat up to 31 px (at
+  2144 px) from their clay, each by its own amount, and that run's scripts corrected it with one bounded map
+  per object. Nothing here does that, and how this repository's gates and scores behave on that scene has not
+  been measured.
 - **A missing or refused external world image** (an HDRI linked from outside the input's folder, or a relative
   path that was not copied) is replaced by a neutral grey world with a warning, so the clay lighting differs
   from the input's (see Security and privacy).
@@ -569,7 +683,7 @@ scene ends up looking real; that is what the contact sheets, the coverage number
 skills/multiview-blockout-to-real/   the skill: SKILL.md, references/, templates/, scripts/ (mvb2r CLI, library, Blender scripts)
 tests/                               python3 tests/run_tests.py (synthetic inputs with known answers, Blender round trips)
 adapters/                            prompts for assistants without skill support
-gallery/                             README images from the first run
+gallery/                             README images from the first run and the second and third inputs
 ```
 
 Cases and everything they produce live outside the repository (`cases/` is git-ignored).

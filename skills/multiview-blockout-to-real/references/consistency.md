@@ -60,6 +60,15 @@ Reading it:
   re-render; linen weave, knit, table grain and hair were re-invented per view.
 - **Small objects can get worse.** Shoes went from 4.79 to 6.09 ΔE (42 thousand samples).
 
+Two cautions from a later rigid scene (a cabinet and a block in a room corner; measured with that run's own
+tool, so its numbers are not on the scale of the table above; `lessons.md`, *third input*):
+
+- **The low band can be a factor, not a few ΔE.** The same door surface differed between two views by a
+  luminance factor of 0.3 to 3.4. Look at the per-object low band before trusting any levelling clamp.
+- **A low high band on a rigid object can be displacement.** Detail correlation on the door fronts was about 0
+  as generated and 0.22 to 0.27 once each view was sampled where its object really was; on the floor and the
+  back wall it stayed near 0.01. Check where the object sits before calling its detail invented.
+
 ## When to run `resync`
 
 `resync` is opt-in: it is not part of a default `run` (use `resync CASE` or `run CASE --resync`), because it
