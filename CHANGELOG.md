@@ -2,10 +2,18 @@
 
 ## [Unreleased]
 
-Documentation only: the findings of a third input, a rigid scene without people (two walls, a floor, an oak
-cabinet of five parts and a terracotta block; six cameras; ten logged Seedream calls, cost unknown). That run
-was made with a separate set of experiment scripts, not with this repository's CLI. No code or test changed,
-and the suite was not re-run for this change (no test reads the documents).
+**Renamed to `multiview-to-real`** (was `multiview-blockout-to-real`): the GitHub repository, the skill and its
+folder (`skills/multiview-to-real/`), the plugin and marketplace ids, the Gemini extension, the Copilot and
+Cursor adapter files, the `--version` string and the download User-Agent. The display name (Multiview Blockout
+2 Real), the CLI (`mvb2r.py`), the library package (`mvb2r`) and the case layout are unchanged, and nothing
+else in the code changed: 46 lines in 23 files, each the name alone. An installed copy under the old name
+keeps working but no longer updates; install again under the new name (README, Install). GitHub redirects the
+old repository URL.
+
+The findings of a third input, a rigid scene without people (two walls, a floor, an oak cabinet of five parts
+and a terracotta block; six cameras; ten logged Seedream calls, cost unknown). That run was made with a
+separate set of experiment scripts, not with this repository's CLI. This part is documentation only; the suite
+was not re-run for it (no test reads the documents).
 
 - README: a new section, "A third input", with four gallery images: the clay grid and the accepted sheet, a
   registration overlay, clay / target / unlit re-render / relightable render for two views, and a relight
@@ -143,4 +151,4 @@ First version.
 - Adapters for Claude Code, Codex, Cursor, Copilot, Gemini CLI and chat assistants.
 - Built from a first full run on one room with a seated person (six views, 26 logged image-model calls, cost
   unknown because the documented price was a `$0` placeholder); its findings are in
-  `skills/multiview-blockout-to-real/references/lessons.md`.
+  `skills/multiview-to-real/references/lessons.md`.

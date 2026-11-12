@@ -102,29 +102,29 @@ beyond what the cameras see; exact identity preservation; relightable albedo fre
 **Claude Code** (plugin marketplace):
 
 ```bash
-claude plugin marketplace add gokayfem/multiview-blockout-to-real
+claude plugin marketplace add gokayfem/multiview-to-real
 ```
 
 ```bash
-claude plugin install multiview-blockout-to-real@multiview-blockout-to-real
+claude plugin install multiview-to-real@multiview-to-real
 ```
 
-Or copy the skill: `cp -R skills/multiview-blockout-to-real ~/.claude/skills/`.
+Or copy the skill: `cp -R skills/multiview-to-real ~/.claude/skills/`.
 
 **Codex, Cursor, Gemini CLI, Copilot and other agents** (via [skills](https://github.com/vercel-labs/skills)):
 
 ```bash
-npx skills add gokayfem/multiview-blockout-to-real
+npx skills add gokayfem/multiview-to-real
 ```
 
 Or install by hand:
 
-- **Codex:** copy `skills/multiview-blockout-to-real` to `~/.agents/skills/`.
+- **Codex:** copy `skills/multiview-to-real` to `~/.agents/skills/`.
 - **Cursor:** copy it to `~/.cursor/skills/`, plus the rule in `adapters/cursor/`.
-- **Copilot:** `gh skill install gokayfem/multiview-blockout-to-real multiview-blockout-to-real`, plus `adapters/copilot/`.
-- **Gemini CLI:** `gemini extensions install https://github.com/gokayfem/multiview-blockout-to-real`.
+- **Copilot:** `gh skill install gokayfem/multiview-to-real multiview-to-real`, plus `adapters/copilot/`.
+- **Gemini CLI:** `gemini extensions install https://github.com/gokayfem/multiview-to-real`.
 
-**claude.ai:** zip `skills/multiview-blockout-to-real` and upload it under Settings > Capabilities > Skills.
+**claude.ai:** zip `skills/multiview-to-real` and upload it under Settings > Capabilities > Skills.
 
 **ChatGPT, Gemini Gems and other chat tools:** see [`adapters/`](adapters/).
 
@@ -132,7 +132,7 @@ Requirements: Python 3.10+ with `numpy`, `scipy`, `scikit-image`, `Pillow`, `ope
 `fal-client` (`pip install -r requirements.txt`), Blender 4.2 or later, checked at start-up (developed and tested on 5.0.1; `$BLENDER`, `blender` on PATH, or the macOS app; `$MVB2R_BLENDER_TIMEOUT` sets the time limit of a Blender call)
 for every geometry, pass and render stage, ffmpeg for the videos (without it the frames are kept and the
 stage says so), and a fal API key in `FAL_KEY` for the
-generation stages. `python3 skills/multiview-blockout-to-real/scripts/mvb2r.py doctor` checks all of it (the key
+generation stages. `python3 skills/multiview-to-real/scripts/mvb2r.py doctor` checks all of it (the key
 is never printed).
 
 Platforms: developed and tested on macOS with Blender 5.0.1. Linux is expected to work (CI runs the
@@ -152,8 +152,8 @@ The agent scaffolds a case, writes the look, the reference roles and the object 
 sheet, and runs the stages:
 
 ```bash
-python3 skills/multiview-blockout-to-real/scripts/mvb2r.py new cases/attic --input attic.blend --look "sunlit attic study, oak beams, late afternoon" --views 6
-python3 skills/multiview-blockout-to-real/scripts/mvb2r.py run cases/attic --to targets
+python3 skills/multiview-to-real/scripts/mvb2r.py new cases/attic --input attic.blend --look "sunlit attic study, oak beams, late afternoon" --views 6
+python3 skills/multiview-to-real/scripts/mvb2r.py run cases/attic --to targets
 ```
 
 `run` chains the stages in order within the case budget. Each stage also runs on its own:
@@ -386,7 +386,7 @@ What a careful viewer still sees in the final pair:
   sky light, not the generated exterior.
 
 The failures of the run and the rule each became are in
-[`references/lessons.md`](skills/multiview-blockout-to-real/references/lessons.md).
+[`references/lessons.md`](skills/multiview-to-real/references/lessons.md).
 
 ## A second input
 
@@ -520,7 +520,7 @@ visual check. Under the rule here they would have fallen back to their cells. Wh
 texture was not measured.
 
 The findings of this run and the rule each became are in
-[`references/lessons.md`](skills/multiview-blockout-to-real/references/lessons.md), marked *(third input)*. Two
+[`references/lessons.md`](skills/multiview-to-real/references/lessons.md), marked *(third input)*. Two
 of them qualify statements made after the first run. A global warp was again the wrong tool, but on rigid
 objects a displacement per object was measurable and worth correcting; this repository has no stage for that
 yet. And brightness between views differed by a factor, not by a few percent.
@@ -680,7 +680,7 @@ scene ends up looking real; that is what the contact sheets, the coverage number
 ## Layout
 
 ```text
-skills/multiview-blockout-to-real/   the skill: SKILL.md, references/, templates/, scripts/ (mvb2r CLI, library, Blender scripts)
+skills/multiview-to-real/            the skill: SKILL.md, references/, templates/, scripts/ (mvb2r CLI, library, Blender scripts)
 tests/                               python3 tests/run_tests.py (synthetic inputs with known answers, Blender round trips)
 adapters/                            prompts for assistants without skill support
 gallery/                             README images from the first run and the second and third inputs

@@ -249,7 +249,7 @@ def announce(stage: str, mdl: dict) -> None:
 
 def fetch_schema(endpoint: str, timeout: float = 30.0) -> dict:
     url = SCHEMA_URL.format(endpoint=urllib.parse.quote(check_endpoint(endpoint), safe="/"))
-    req = urllib.request.Request(url, headers={"User-Agent": "multiview-blockout-to-real"})
+    req = urllib.request.Request(url, headers={"User-Agent": "multiview-to-real"})
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             data = r.read(MAX_SCHEMA_BYTES + 1)

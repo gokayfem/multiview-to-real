@@ -7,7 +7,7 @@ alwaysApply: false
 Copy this file into your project's `.cursor/rules/`. Install the skill too (Cursor reads `~/.cursor/skills`,
 `~/.claude/skills` and `.agents/skills`), so the rule can point at it.
 
-- Use the `multiview-blockout-to-real` skill: scaffold a case with `scripts/mvb2r.py new`, write `case.json`
+- Use the `multiview-to-real` skill: scaffold a case with `scripts/mvb2r.py new`, write `case.json`
   yourself, check the camera coverage table and the pass verification before any paid call, then `run CASE --to
   targets`, look, and continue.
 - Accept refined views only by the thresholds written in the case's `CONTRACT.md` before looking.

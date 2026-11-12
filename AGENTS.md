@@ -6,7 +6,7 @@ skill rather than develop it, see the README.
 ## Layout
 
 ```text
-skills/multiview-blockout-to-real/   the skill (this is what gets installed)
+skills/multiview-to-real/            the skill (this is what gets installed)
   SKILL.md                           entry point: input routing, workflow, decision rules, hard rules, reference routing
   references/                        conventions, inputs, cameras, generation, consistency, projection, seams,
                                      geometry, pbr, validation, lessons
@@ -40,8 +40,8 @@ gallery/                             README images from the first run and the se
 ```bash
 python3 tests/run_tests.py                                         # offline, no key; Blender tests skip without Blender
 python3 tests/run_tests.py grid model                              # only these test modules
-python3 skills/multiview-blockout-to-real/scripts/mvb2r.py --help
-python3 skills/multiview-blockout-to-real/scripts/mvb2r.py doctor
+python3 skills/multiview-to-real/scripts/mvb2r.py --help
+python3 skills/multiview-to-real/scripts/mvb2r.py doctor
 ```
 
 Every stage is a subcommand: `mvb2r.py <stage> CASE [options]`. Each module that owns a subcommand exposes

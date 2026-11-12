@@ -41,7 +41,7 @@ DOWNSTREAM = ("proj/coverage.json", "proj/score.json", "out/diagnostic.blend", "
 
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="mvb2r.py", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--version", action="version", version=f"multiview-blockout-to-real {__version__}")
+    ap.add_argument("--version", action="version", version=f"multiview-to-real {__version__}")
     ap.add_argument("--debug", action="store_true", help="print tracebacks of unexpected errors")
     sub = ap.add_subparsers(dest="command", required=True)
     for name in CORE:

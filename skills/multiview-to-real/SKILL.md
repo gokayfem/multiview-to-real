@@ -1,5 +1,5 @@
 ---
-name: multiview-blockout-to-real
+name: multiview-to-real
 description: >-
   Turns any grey 3D scene (a .blend with several, one or no cameras, a glTF/GLB, OBJ, FBX, USD, PLY or STL file,
   a JSON scene spec of primitives, or an idea written as a spec first) into the same scene textured from several
@@ -64,7 +64,7 @@ preservation; relightable albedo free of baked shading.
 
 Post a labelled image at every checkpoint (camera preview, pass overlays, grid, generated sheet, per-view crops,
 consistency table, re-renders, novel views, coverage tour, relight sheet): images first, numbers second. `SKILL`
-below means `skills/multiview-blockout-to-real/scripts/mvb2r.py`.
+below means `skills/multiview-to-real/scripts/mvb2r.py`.
 
 1. **Check.** `python3 SKILL doctor`: Python packages, Blender, `FAL_KEY` (never printed).
 2. **Scaffold.** `python3 SKILL new CASE --input SCENE [--look TEXT] [--views N] [--closeup OBJ] [--reference

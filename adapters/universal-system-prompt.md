@@ -1,7 +1,7 @@
 # Multiview Blockout 2 Real: Universal System Prompt
 
 Paste this into any assistant that has no skill support. If the assistant can read files and run Python and
-Blender, give it the whole `skills/multiview-blockout-to-real/` folder instead: the `mvb2r.py` tools do the
+Blender, give it the whole `skills/multiview-to-real/` folder instead: the `mvb2r.py` tools do the
 passes, the grid, the calls, the consistency score, the fusion, the scoring, the PBR build and the reports.
 
 ---

@@ -29,5 +29,5 @@ jobs:
       # tests run offline with no key, and the Blender round trip is skipped when Blender is not found.
       - run: pip install numpy scipy scikit-image Pillow "${{ matrix.opencv }}"
       - run: python tests/run_tests.py
-      - run: python skills/multiview-blockout-to-real/scripts/mvb2r.py --help
-      - run: python -m compileall -q skills/multiview-blockout-to-real/scripts
+      - run: python skills/multiview-to-real/scripts/mvb2r.py --help
+      - run: python -m compileall -q skills/multiview-to-real/scripts

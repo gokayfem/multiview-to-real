@@ -97,7 +97,7 @@ def test_scaled_params_and_metrics():
 
 
 def test_refit_oversized_sphere_blender():
-    sys.path.insert(0, str(HERE.parent / "skills" / "multiview-blockout-to-real" / "scripts"))
+    sys.path.insert(0, str(HERE.parent / "skills" / "multiview-to-real" / "scripts"))
     from mvb2r.fusion_io import find_blender, read_ids, run_blender, write_json, write_png
     if find_blender() is None:
         raise Skip("Blender not found: refit carve test not run")

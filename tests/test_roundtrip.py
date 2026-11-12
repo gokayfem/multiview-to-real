@@ -27,7 +27,7 @@ THRESH = {"psnr_min_db": 21.0, "leak_max": 0.03, "leak_max_masked": 0.01, "loo_f
 
 
 def _blender_or_skip():
-    sys.path.insert(0, str(HERE.parent / "skills" / "multiview-blockout-to-real" / "scripts"))
+    sys.path.insert(0, str(HERE.parent / "skills" / "multiview-to-real" / "scripts"))
     from mvb2r.fusion_io import find_blender
     if find_blender() is None:
         raise Skip("Blender not found ($BLENDER / PATH / macOS app): synthetic round trip not run")
