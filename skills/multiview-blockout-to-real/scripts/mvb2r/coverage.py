@@ -1,17 +1,19 @@
 """Conservative fill of unobserved texels, per-object maps and area-weighted coverage statistics.
 
-Fill rule (INFERRED texels, flagged in unobserved.png and coverage.json): same object only. Near observed texels
-a push-pull pyramid fill continues the observed colours; farther than `far` texels it fades to the object's
-robust median colour, so large never-seen surfaces get a plain colour and no invented detail. An object with
-almost nothing observed takes the median of observed objects of the same class (donor), else its class prior.
+Fill rule (INFERRED texels, flagged in unobserved.png and coverage.json): same object only (mvb2r.fill). Near
+observed texels a smooth Gaussian pull-push continues the observed colours; far away it fades to a plain
+reference colour (the object's median, or for plain wall-like classes the median of its well-lit texels, with the
+fill lifted to be no darker than it), so large never-seen surfaces get no invented detail. An object with almost
+nothing observed takes the median of observed objects of the same class (donor), else its class prior.
+fill_texture and push_pull are re-exported from mvb2r.fill.
 """
 from __future__ import annotations
 
 from pathlib import Path
 
-import cv2
 import numpy as np
 
+from mvb2r.fill import fill_texture, push_pull  # noqa: F401  (re-exported)
 from mvb2r.fusion import Result
 from mvb2r.fusion_io import linear_to_srgb, u8, write_png, write_srgb_png
 from mvb2r.visibility import REASON_ORDER, REASONS, primary_reason
@@ -22,53 +24,6 @@ VIEW_COLOURS = np.array([[0, 0, 0], [230, 25, 75], [60, 180, 75], [255, 225, 25]
 REASON_COLOURS = np.array([[0, 0, 0], [120, 120, 120], [60, 60, 200], [128, 0, 128], [200, 120, 255],
                            [255, 0, 0], [255, 140, 0], [255, 255, 0], [0, 200, 0], [0, 200, 200], [255, 0, 255],
                            [255, 128, 128], [128, 64, 0], [255, 255, 255]], np.uint8)
-
-
-def push_pull(img: np.ndarray, w: np.ndarray) -> np.ndarray:
-    """Fill w == 0 pixels of an (R,R,C) image from weighted neighbours at all scales."""
-    R0, C = img.shape[0], img.shape[2]
-    R = 1 << int(np.ceil(np.log2(max(R0, 2))))
-    c = np.zeros((R, R, C), np.float32)
-    ww = np.zeros((R, R), np.float32)
-    c[:R0, :R0] = img
-    ww[:R0, :R0] = w
-    levels = []
-    while c.shape[0] > 1:
-        levels.append((c, ww))
-        h = c.shape[0] // 2
-        cw = (c * ww[..., None]).reshape(h, 2, h, 2, C).sum((1, 3))
-        ws = ww.reshape(h, 2, h, 2).sum((1, 3))
-        c = cw / np.maximum(ws, 1e-12)[..., None]
-        ww = np.minimum(ws, 1.0)
-    for cf, wf in reversed(levels):
-        n2 = cf.shape[0]
-        up = cv2.resize(c, (n2, n2), interpolation=cv2.INTER_LINEAR) if c.shape[0] > 1 else \
-            np.repeat(np.repeat(c, 2, 0), 2, 1)
-        up = up[..., None] if up.ndim == 2 else up
-        a = np.clip(wf, 0, 1)[..., None]
-        c = cf * a + up * (1 - a)
-    return c[:R0, :R0]
-
-
-def fill_texture(tex, color: np.ndarray, observed: np.ndarray, base: np.ndarray | None = None,
-                 far: float | None = None) -> np.ndarray:
-    """(R,R,3) linear texture: observed texels as given, the rest inferred from THIS object only."""
-    R = tex.R
-    med = np.median(color[observed], 0).astype(np.float32) if observed.any() else \
-        np.asarray(base if base is not None else (0.18, 0.18, 0.18), np.float32)
-    if not observed.any():
-        return np.broadcast_to(med, (R, R, 3)).astype(np.float32).copy()
-    img = np.zeros((R, R, 3), np.float32)
-    w = np.zeros((R, R), np.float32)
-    img[tex.rows[observed], tex.cols[observed]] = color[observed]
-    w[tex.rows[observed], tex.cols[observed]] = 1
-    pp = push_pull(img, w)
-    far = far if far is not None else max(R / 32.0, 8.0)
-    dist = cv2.distanceTransform((w == 0).astype(np.uint8), cv2.DIST_L2, 5)
-    a = np.clip((dist - far) / far, 0, 1)[..., None]
-    out = pp * (1 - a) + med[None, None] * a
-    out[w > 0] = img[w > 0]
-    return out.astype(np.float32)
 
 
 def area_fractions(tex, observed: np.ndarray, soft: np.ndarray) -> dict:

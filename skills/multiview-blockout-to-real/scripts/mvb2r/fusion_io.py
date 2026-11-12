@@ -20,7 +20,7 @@ BLENDER_DIR = Path(__file__).resolve().parents[1] / "blender"
 
 
 from mvb2r import common  # noqa: E402  (one source for shared helpers: no drifting copies)
-from mvb2r.common import StageError, find_blender, linear_to_srgb, srgb_to_linear, write_json  # noqa: E402,F401
+from mvb2r.common import StageError, clean_text, find_blender, linear_to_srgb, srgb_to_linear, write_json  # noqa: E402,F401
 
 
 # ----------------------------------------------------------------------------------------------- colour
@@ -134,10 +134,15 @@ def load_objects(case_dir: Path) -> list[dict]:
     for r in rows:
         name, oid = r.get("name"), r.get("id", r.get("pass_index"))
         if not isinstance(name, str) or not isinstance(oid, int) or oid < 1 or oid in seen:
-            raise StageError(f"objects.json row needs a name and a unique integer id >= 1: {r!r}")
+            raise StageError(f"objects.json row needs a name and a unique integer id >= 1: {clean_text(repr(r), 80)}")
         seen.add(oid)
         out.append({**r, "name": name, "id": oid})
     return out
+
+
+def object_gate_overrides(o: dict) -> dict:
+    from mvb2r.gating import object_gate_overrides as overrides
+    return overrides(o)
 
 
 def object_settings(case: dict) -> dict:
@@ -145,17 +150,18 @@ def object_settings(case: dict) -> dict:
     out = {}
     for o in case.get("objects", []) or []:
         if not isinstance(o, dict) or "name" not in o:
-            raise StageError(f"case.json objects entries need a 'name': {o!r}")
+            raise StageError(f"case.json objects entries need a 'name': {clean_text(repr(o), 80)}")
         out[o["name"]] = {"class": str(o.get("class", "generic") or "generic"),
                           "detail_critical": bool(o.get("detail_critical", False)),
                           "prefer_view": o.get("prefer_view"),
                           "refit": bool(o.get("refit", False)), "opening": bool(o.get("opening", False)),
-                          "id": o.get("id")}
+                          "id": o.get("id"), "regions": o.get("regions"), "gate": object_gate_overrides(o)}
     return out
 
 
 # ----------------------------------------------------------------------------------------------- blender
 # ----------------------------------------------------------------------------------------------- targets.json
+BLENDER_WARNING_TAG = "[mvb2r] WARNING"   # printed by blender/_fusion_bpy.py; echoed to the stage output
 GATE_RELIABILITY = {"high", "medium", "unknown"}  # gate-quality masks; "low" / "prior only" never gate
 
 
@@ -224,6 +230,8 @@ def run_blender(script: str, args: list, blend: Path | None = None, log: Path | 
             fh.write(f"$ {script} {' '.join(argv)}\n{text}\n")
     if r.returncode != 0:
         raise StageError(f"Blender script {script} failed (exit {r.returncode}):\n{text[-2500:]}")
+    for line in dict.fromkeys(ln.strip() for ln in (r.stdout or "").splitlines() if ln.startswith(BLENDER_WARNING_TAG)):
+        print(common.clean_text(line, 300), flush=True)   # e.g. a missing world image replaced by neutral grey
     return text
 
 

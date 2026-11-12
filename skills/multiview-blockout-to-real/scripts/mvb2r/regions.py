@@ -206,18 +206,20 @@ def method_regions(obj: ObjectInput, prm: FusionParams) -> Result:
 
 
 # ----------------------------------------------------------------------------------------------- single source
-def single_source_regions(tex, st, prefer: int | None = None) -> list[dict]:
-    """One region per 3D-connected mesh part; views ranked by the prefer_view, then by projected resolution
-    (sum over the part's valid texels of area x ppt^2 = source pixels covering the part)."""
+def single_source_regions(tex, st, prefer: int | None = None, parts: list | None = None) -> list[dict]:
+    """One region per 3D-connected mesh part (or per (name, mask) of `parts`); views ranked by the prefer_view,
+    then by projected resolution (sum over the part's valid texels of area x ppt^2 = source pixels covering it).
+    The legacy policy's regions; the strict policy uses handover.coherent_regions."""
     out = []
-    for part in np.unique(tex.part):
-        m = tex.part == part
+    if parts is None:
+        parts = [(f"part_{int(p)}", tex.part == p) for p in np.unique(tex.part)]
+    for name, m in parts:
         px = np.array([np.sum(tex.area[m] * st.ppt[v, m] ** 2 * st.valid[v, m]) / max(tex.area[m].sum(), 1e-12)
                        for v in range(st.V)])
         order = [int(v) for v in np.argsort(-px) if px[v] > 0]
         if prefer is not None and prefer in order:
             order = [prefer] + [v for v in order if v != prefer]
-        out.append({"name": f"part_{int(part)}", "mask": m, "views": order})
+        out.append({"name": name, "mask": m, "views": order})
     return out
 
 

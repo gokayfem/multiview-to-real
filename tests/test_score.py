@@ -99,3 +99,41 @@ def test_mask_gate_erodes_by_default():
     m = np.zeros((9, 9), bool)
     m[2:7, 2:7] = True
     assert _dilate(m, -1).sum() == 9 and _dilate(m, 1).sum() == 49 and _dilate(m, 0).sum() == 25
+
+
+def test_loo_mask_uses_the_evaluation_validity_only():
+    from types import SimpleNamespace
+    from mvb2r.score import loo_mask
+    ev = np.array([True, True, False, True])
+    res = SimpleNamespace(observed=np.array([True, False, True, True]), extra={"soft": np.array([0, 0, 0, 1], bool)})
+    assert loo_mask(ev, res).tolist() == [True, False, False, False]
+
+
+def test_print_table_shows_leak():
+    import contextlib
+    import io
+    from mvb2r.score import print_table
+    out = {"methods": {"best": {"loo": None, "seams_novel": None, "seams_texture": {}, "sharpness": {}}},
+           "leak": {"definition": "x", "per_method": {"best": {"objects": {}, "leaked_fraction": 0.043}}}}
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        print_table(out)
+    assert "leak %" in buf.getvalue() and "4.30" in buf.getvalue()
+
+
+def test_score_refuses_a_projection_made_with_other_settings():
+    from mvb2r.fusion_io import StageError
+    from mvb2r.score import check_projection
+    cov = {"gate_policy": "strict", "fill": "smooth", "views": ["view_01", "view_02"]}
+    check_projection(cov, {"gate_policy": "strict", "fill": "smooth"}, ["view_01", "view_02"])
+    for opt, views, frag in (({"gate_policy": "legacy", "fill": "smooth"}, ["view_01", "view_02"], "gate_policy"),
+                             ({"gate_policy": "strict", "fill": "blocks"}, ["view_01", "view_02"], "fill"),
+                             ({"gate_policy": "strict", "fill": "smooth"}, ["view_01"], "views")):
+        try:
+            check_projection(cov, opt, views)
+            raise AssertionError(frag)
+        except StageError as e:
+            assert frag in str(e) and "project" in str(e), str(e)
+    # coverage.json of the previous release (nothing recorded) = legacy gates, blocks fill
+    old = {"views": ["view_01", "view_02"]}
+    check_projection(old, {"gate_policy": "legacy", "fill": "blocks"}, ["view_01", "view_02"])

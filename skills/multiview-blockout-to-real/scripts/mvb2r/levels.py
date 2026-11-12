@@ -70,12 +70,35 @@ def low_weights(obj: ObjectInput, prm: FusionParams, lab: np.ndarray) -> np.ndar
     for i in range(st.V):
         W[i] = np.where(st.valid[i], np.maximum(st.score[i], 1e-4) ** prm.blend_power, 0) * \
             valid_ramp(tex, st.valid[i], prm.split_ramp * tex_scale(tex))
-    single = forced_mask(st, obj.regions)
-    if single.any():
-        feather = np.clip(np.maximum(uv_blur(tex, single.astype(np.float32), 6.0), single), 0, 1)
+    feather = region_feather(tex, st, obj.regions)
+    if feather is not None:
         own = (lab[None] == np.arange(st.V)[:, None])
         W = np.where(own, W, W * (1.0 - feather[None]))
     return W
+
+
+LEGACY_REGION_FEATHER = 6.0   # texels, regions without a "cut" (legacy policy / older inputs)
+
+
+def region_feather(tex, st, regions) -> np.ndarray | None:
+    """(N,) weight in [0,1] by which non-label views are suppressed in the low band around single-source regions.
+    Regions with a "cut" (handover.coherent_regions): "hard" = the region mask itself (single source in both
+    bands), "feather" = the region mask blurred by its "feather" texels. Others: the legacy union feather."""
+    if not regions:
+        return None
+    if not any("cut" in rg for rg in regions):
+        single = forced_mask(st, regions)
+        if not single.any():
+            return None
+        return np.clip(np.maximum(uv_blur(tex, single.astype(np.float32), LEGACY_REGION_FEATHER), single), 0, 1)
+    out = np.zeros(st.N, np.float32)
+    for rg in regions:
+        m = rg["mask"].astype(np.float32)
+        if rg.get("views") and rg.get("feather", 0) > 0:
+            m = np.clip(np.maximum(uv_blur(tex, m, rg["feather"]), m), 0, 1)
+        if rg.get("views"):
+            out = np.maximum(out, m)
+    return out
 
 
 def method_freqsplit(obj: ObjectInput, prm: FusionParams, labeller: str = "best", sigma: float | None = None) -> Result:

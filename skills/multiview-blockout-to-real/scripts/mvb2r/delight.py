@@ -14,6 +14,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from mvb2r.common import owned_path
 from mvb2r.fusion_io import StageError, lum, read_exr, read_ids, read_rgb_linear, write_srgb_png
 from mvb2r.visibility import masked_lowpass
 
@@ -51,9 +52,14 @@ def delight_view(case: Path, view: str, shading_dir: Path, out: Path, gmin=0.7, 
     applied = raw >= min_corr  # a target that does not show the proxy shading is left alone (no inverse shading)
     g = gain_map(S, ids, sigma=max(T.shape[:2]) / 40.0, gmin=gmin, gmax=gmax) if applied else np.ones_like(S)
     A = np.clip(T * g[..., None], 0, 1)
-    write_srgb_png(out / f"{view}.png", A, bits=16)
+    write_srgb_png(owned_output(case, out, view), A, bits=16)
     return {"applied": bool(applied), "gain_p05": float(np.percentile(g[m], 5)),
             "gain_p95": float(np.percentile(g[m], 95)), "corr_raw": raw, "corr_delit": _corr(lum(A)[m], S[m])}
+
+
+def owned_output(case: Path, out: Path, view: str) -> Path:
+    """The de-lit image path, refused when it or a folder above it inside the case is a symbolic link."""
+    return owned_path(case, Path(out) / f"{view}.png")
 
 
 def _corr(a, b) -> float:

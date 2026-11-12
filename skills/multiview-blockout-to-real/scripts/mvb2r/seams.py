@@ -120,7 +120,7 @@ def method_register(obj: ObjectInput, prm: FusionParams) -> Result:
             fv = bilerp(F, obj.st.u[vi], obj.st.v[vi])
             offsets[vi] = (fv[:, 0].astype(np.float32), fv[:, 1].astype(np.float32))
             stats[obj.st.view_names[vi]] = float(np.median(np.hypot(fv[k, 0], fv[k, 1])))
-        cur = obj.resample(offsets, obj.st)  # keep the caller's stack (LOO: held-out view stays out)
+        cur = replace(obj.resample(offsets, obj.st), regions=obj.regions)  # caller's stack and regions (LOO)
     out = method_multiband(cur, prm)
     return replace(out, extra={**out.extra, "register_median_px": stats})
 

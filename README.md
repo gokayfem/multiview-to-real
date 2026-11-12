@@ -56,15 +56,22 @@ This toolkit gives the agent a method and the tools to do it properly:
   invented details line up).
 - **Visibility-aware fusion into each object's UV atlas.** Every texel is tested in every view (behind,
   off-image, back-facing, grazing, occluded, wrong object, too close to an edge, low alignment confidence) and
-  sampled only inside the generated mask of its own object. Several fusion methods run on identical inputs.
-- **Scored where it matters.** Leave-one-view-out (fuse from the other views, predict the held-out one) and
-  seam visibility in texture space and in novel views, next to per-object coverage.
+  sampled only inside the generated mask of its own object, eroded, with every other object's mask rejected and
+  a margin kept around every nearer silhouette. A detail-critical region (a face, a hand) takes one camera, and
+  a second camera starts only after a gap. Several fusion methods run on identical inputs.
+- **Scored where it matters.** Leave-one-view-out (fuse from the other views, predict the held-out one), seam
+  visibility in texture space and in novel views, and a count of texels that took another object's pixels, next
+  to per-object coverage.
 - **Optional repair rounds.** A render-then-refine round lets the image model clean up the projected re-renders
   so the views share one layout, kept only if the agreement score improves; a silhouette-carving refit fixes
   geometry such as hair that is larger than what was generated.
 - **Two honest outputs.** A diagnostic `.blend` with the projected appearance (it contains lighting and says so)
   and a PBR `.blend` whose base colour is the projected photo times a smooth correction, with Principled
   materials and a light rig fitted to the targets. The residual baked shading is measured and reported.
+- **Reviewed at full size, on fixed boxes.** `critique` packs native-resolution crop strips for a fresh
+  reviewer on boxes that are reused in every later round. Acceptance is its verdict per crop; in the first run
+  a reduced-size sheet hid a failing head and hands. A fix round is kept only if it is no worse on the scores
+  and better on those crops.
 - **Measured versus inferred, everywhere.** Coverage per object, inferred surfaces kept plain and labelled, and
   a tour (a 360° pan inside an enclosing room, an orbit around an object or product scene) rendered a second
   time with every inferred pixel tinted.
@@ -128,7 +135,7 @@ stage says so), and a fal API key in `FAL_KEY` for the
 generation stages. `python3 skills/multiview-blockout-to-real/scripts/mvb2r.py doctor` checks all of it (the key
 is never printed).
 
-Platforms: 0.1.0 was developed and tested on macOS with Blender 5.0.1. Linux is expected to work (CI runs the
+Platforms: developed and tested on macOS with Blender 5.0.1. Linux is expected to work (CI runs the
 offline tests on Ubuntu, without Blender). Windows is untested.
 
 ## Use
@@ -164,12 +171,12 @@ python3 skills/multiview-blockout-to-real/scripts/mvb2r.py run cases/attic --to 
 | `targets CASE [--images DIR]` | freeze the targets: resample to the calibration resolution (never called new detail), alignment confidence, per-object generated masks, `targets.json`; or take your own `view_XX.png` images |
 | `consistency CASE [--set NAME=PATTERN] [--views …]` | projector-free cross-view reprojection score: low band (lighting and colour) and high band (do invented details line up), per object; any image set can be scored |
 | `project CASE [--method NAME\|all]` | visibility-aware multiview fusion into each object's UV atlas, all maps, `coverage.json`, `diagnostic.blend`, consensus re-renders, novel views |
-| `score CASE [--methods …] [--no-loo]` | leave-one-view-out, seam visibility, sharpness retention, alignment, coverage; contact sheets per view and method |
+| `score CASE [--methods …] [--no-loo]` | leave-one-view-out (on an evaluation mask that does not depend on the gate policy), seam visibility, sharpness retention, leak (texels that took another object's pixels), alignment, coverage; contact sheets per view and method |
 | `resync CASE [--method NAME]` | opt-in render-then-refine round on the consensus re-renders (one paid call per view); new targets kept only if `consistency` improves and alignment holds, after which `consistency`, `project`, `score`, `pbr` and `render` must be re-run |
 | `refit CASE [--object NAME] [--mode solid\|shell] [--apply]` | silhouette carving of `refit` objects to their generated masks into a new `blockout_refit.blend`, before/after IoU per view; `--apply` keeps the old blockout as `blockout_pre_refit.blend` (and refuses if that file exists) and switches the case to the carved one |
-| `pbr CASE` | shading basis under the scene's own lights, conservative de-light that keeps projected detail, Principled materials, rig fit to target luminance, `final.blend` |
+| `pbr CASE [--synth-direct]` | shading basis under the scene's own lights, conservative de-light that keeps projected detail, Principled materials, rig fit to target luminance, `final.blend`; `--synth-direct` (opt-in, surfaces named in `pbr.synth_objects`) replaces the generated photo's own direct-light patch on those surfaces with texture copied from the shaded part of the same object, marked inferred |
 | `render CASE [--move] [--tour] [--relight] [--frames N] [--scale S] [--samples N]` | source views, novel views and a camera move between neighbouring cameras (a pair with no valid in-between camera is skipped with a note), a tour (360° pan for enclosing rooms, orbit for object scenes; the mode is in `out/tour.json`) and its coverage-tinted copy with measured/inferred fractions, relight comparison (`out/relight.json`) |
-| `critique CASE [--save FILE]`, `report CASE` | pack sheets for a fresh reviewer and store its answer; write `out/report.md` (method table, native vs resized sizes, calls, measured vs inferred, limits) |
+| `critique CASE [--round NAME] [--new-boxes] [--save FILE]`, `report CASE` | pack sheets and native-resolution crop strips on fixed, reused boxes for a fresh reviewer, one folder per round, and store its per-crop verdicts; write `out/report.md` (method table, native vs resized sizes, calls, leak, measured vs inferred, review rounds, limits) |
 | `run CASE [--from STAGE] [--to STAGE] [--resync] [--schema-file F]` | views, probe, grid, generate, refine, targets, consistency, project, score, pbr, render, report, in that order within the budget (`probe` is skipped for the mock generator); `resync` only with `--resync`; `cameras`, `probe --check-size`, `refit` and `critique` are run by hand; `logs/run_summary.json` lists what ran and any STALE outputs (refresh with `run CASE --from project`) |
 
 Every paid call goes through the case budget and is logged in `gen/calls.jsonl` with the endpoint, sanitised
@@ -311,20 +318,72 @@ The run made 26 Seedream calls (one text-to-image for the character, four sheet 
 a `$0` price placeholder. Projection took about 5.5 minutes per method set, the PBR build about 40 minutes of
 Blender and Python time.
 
-What a careful viewer sees:
+**After an independent review.** A fresh reviewer who saw only the images judged both scenes at 100% on fixed
+crop boxes. The builder had called both acceptable from reduced-size sheets. At full frame from the six source
+cameras the baked scene passed. The head and hands did not, in the source cameras themselves: the hair was a
+different object from the photographed hair, the face was split into mismatched pieces, fingers were doubled, and
+neighbouring objects were painted onto each other (trouser colour on every fingertip, sweater on the hip, the
+sofa's top rail on the wall). Measured afterwards, 4.3% of the observed skin texels had taken another object's
+pixels. Three fix rounds followed, each scored on the same evaluation masks and reviewed again on the same boxes:
 
-- **Hair is a smooth shell.** Carved to the generated silhouette, painted with strand texture, but with no
-  strands or highlights; the hairline shows a thin line in the close-up.
-- **Shoes and hands.** Laces and soles are re-invented in every view, so they are taken from one view each and
-  disagree with the geometry at their edges; dark slivers remain at finger silhouettes.
-- **Baked light in the diagnostic, a ghost of it in the PBR.** The floor sun patch is in the diagnostic texture;
-  after relighting the PBR scene, pale stepped patches remain where it was.
-- **Faint label steps.** A few faint rectangles on the back wall and steps on the floor in novel views, where
-  fusion switches source view.
+| | First winner | Round 2: strict gating, one camera per face, hand and shoe, smooth fill | Round 3: the hairline takes the photographed hair |
+|---|---|---|---|
+| Held-out PSNR, mean of five objects | 28.17 dB | 28.29 dB | 28.27 dB |
+| Novel-view seam step (8-bit levels) | 4.29 | 4.12 | 4.14 |
+| Sharpness kept | 0.77 | 0.74 | 0.74 |
+| Skin texels taken from another object | 4.3% | 0 | not re-measured |
+
+<p align="center"><img src="gallery/fix-rounds.jpg" width="100%" alt="Target, first winner, round 2 and round 3 for the head in the frontal view, the hands in the side view and the head in a three-quarter view"></p>
+
+<p align="center"><sub>Target, first winner, round 2, round 3, at the reviewer's boxes. Top: round 2 removed the hair strokes on the cheek and introduced a pink band under the hair, because skin that only ever saw hair pixels was rejected and filled with skin colour; round 3 removed it. Middle: the trouser-coloured fingertips are gone; the fingers are still soft and doubled. Bottom: the face in a three-quarter view is wrong in every round. It is the close-up laid on a proxy head of a different shape.</sub></p>
+
+Round 2 scored better on every mean and still introduced the worst defect of the three rounds; round 3 scored
+level with it and removed that defect. A finer re-carve of the hair was tried and not adopted (lower hair IoU in
+five of six views, a notch at the temple, 1785 UV islands instead of 653).
+
+In the relightable scene the floor under the generated sun patch was replaced by texture synthesised from the
+shaded floor. With the sun moved, the old patch against the floor around it went from 1.48 to 1.02 in the wide
+front view, 2.11 to 1.38 in the elevated view and 3.29 to 2.18 in a view where most of the rest is light
+falling off from the window; the correlation of albedo with proxy shading went from 0.30 to 0.16. The costs:
+23.7% of the floor became inferred, and PSNR against the targets fell from 24.9 to 23.5 dB because the targets
+contain the patch.
+
+<p align="center"><img src="gallery/relight-floor-synthesis.jpg" width="100%" alt="Relightable scene under the fitted light and with the sun moved, the baked scene twice, and a full-size crop of the floor"></p>
+
+<p align="center"><sub>Top: relightable scene under the fitted light, the same with the sun moved (the patch leaves the floor and lands on the wall), and the baked scene twice, which cannot change. Bottom, at 100% under the fitted light: target, the earlier relightable build with the blown patch, and the synthesised floor, which is soft, repeats its planks and is redder than the photograph.</sub></p>
+
+The reviewer's verdict after the third pass:
+
+| Use | Baked scene | Relightable scene |
+|---|---|---|
+| Full frame from the six source cameras | acceptable | acceptable, slightly worse than baked |
+| Full frame from nearby new cameras, a short camera move | acceptable with caveats | acceptable with caveats |
+| A full turn of the room | not acceptable (flat fill for about 3.5 s) | acceptable as a bare room |
+| Relighting the empty room | does not respond | acceptable |
+| Relighting with the person in shot | does not respond | not acceptable |
+| Close-ups of head or hands | not acceptable | not acceptable |
+| Close-ups of the floor | not assessed | not acceptable |
+
+Its summary: the main problems are geometry (helmet hair, finger shapes, shoes), and every face fix traded one
+visible artefact for another of similar weight.
+
+What a careful viewer still sees in the final pair:
+
+- **Hair is a smooth shell.** Carved to the generated silhouette and painted with strand texture, it reads as a
+  helmet from every angle; a drawn hairline shows in the close-up.
+- **The face holds only near its source camera.** From a three-quarter view the baked face shows a doubled eye
+  and jaw, and the relightable face a mosaic of square skin patches; the relightable mouth and jaw are the
+  proxy's.
+- **Hands and shoes.** Fingers are soft and doubled, the shoes read as slippers with white rims, and a wedge of
+  sweater sits on the hip: the proxy is not where the photographed surface is.
+- **Light.** The baked scene contains its light and cannot change. In the relightable scene the room responds
+  and the person only darkens uniformly (0.83 to 1.00 of her original brightness per view).
+- **The synthesised floor** passes at full frame and fails close up: soft, planks repeating, redder than the
+  photographs.
 - **Plain fills.** The wall behind the cameras, the ceiling, the floor under the sofa and the person's back are
   inferred and plain. They are tinted in the coverage tour and listed in the report.
-- **The window is the sky light.** The view through the window is the HDRI, not the generated exterior.
-- **The face close-up renders 13% dark** under the one global rig; no per-view correction is applied.
+- **The window** is the proxy's: its bar layout differs from the generated sash, and the view through it is the
+  sky light, not the generated exterior.
 
 The failures of the run and the rule each became are in
 [`references/lessons.md`](skills/multiview-blockout-to-real/references/lessons.md).
@@ -395,7 +454,9 @@ python3 tests/run_tests.py           # offline, no key; the Blender round trips 
 | Targets | `tests/test_targets.py` | the acceptance rule per object, alignment confidence, masks, native and resized sizes recorded with the right words |
 | Consistency | `tests/test_consistency.py` | the cross-view score on synthetic views with known agreement |
 | Fusion | `tests/test_raster.py`, `tests/test_visibility.py`, `tests/test_fusion.py`, `tests/test_score.py` | UV rasterisation, every rejection reason, each fusion method on synthetic stacks, LOO and seam metrics |
-| Refit and PBR | `tests/test_refit.py`, `tests/test_pbr.py` | carving removes only what lies outside the mask and respects other geometry; with Blender, an oversized sphere is carved back; de-light gains are clamped, the mean-albedo bound keeps detail, the rig fit converges, failed fits and skipped de-lights are reported |
+| Gates, regions, leak | `tests/test_gating.py`, `tests/test_zones.py`, `tests/test_leak.py` | the legacy gates pinned bit for bit, each strict rule (own erosion and its thin-object fallback, other masks, the nearer-occluder margin and soft band), margins that scale with camera size down to a 1 px floor, one dominant camera per region with a hand-over band, contact zones that leave coverage flags untouched, the leak count, an evaluation mask that ignores the policy |
+| Fill, tour, review crops | `tests/test_fill.py`, `tests/test_tour.py`, `tests/test_crops.py` | the smooth fill has no block steps and keeps observed texels, the well-lit reference and the lift, the old fill reproduced on request; the dip-through-black factors and untouched rendered frames; crop boxes computed, validated, reused across rounds and never downscaled |
+| Refit and PBR | `tests/test_refit.py`, `tests/test_pbr.py` | carving removes only what lies outside the mask and respects other geometry; with Blender, an oversized sphere is carved back; de-light gains are clamped, the mean-albedo bound keeps detail, the rig fit converges, failed fits and skipped de-lights are reported; `tests/test_sunpatch.py`: the direct-light mask from the photo, from the proxy light and from both, a fill that restores a striped texture, follows a brightness gradient without block steps, is deterministic, leaves inputs unchanged and skips a patch with no shaded source |
 | Untrusted input | `tests/test_security.py` | Blender never starts with auto-run, names cannot leave a folder, the key is scrubbed, file text cannot inject prompt lines, downloads are https images only |
 | Round trip | `tests/test_roundtrip.py` (needs Blender) | a primitives scene with known textures, 4 cameras at 320 px, views perturbed like generated ones (gain and tint fields, small warps, view-specific detail): `project --method all` and `score`, checked for texture PSNR against the truth, object leakage, UV orientation, single-source regions and coverage bookkeeping; a lit variant checks that de-lighting reduces shading correlation |
 
@@ -421,6 +482,46 @@ disagree only in invented detail. (An earlier lead for `register` was a measurem
 The paid path has been exercised once end to end on the second input above: `probe` on the live schema,
 `grid`, `generate`, `refine`, `targets`, `consistency`, `project` and `score`.
 
+Two more runs were made by hand for 0.2.0, with this code and the first run's existing generated images:
+
+- **Old against new gating at full resolution.** The 15-object room with its six cameras at 1664 px, method
+  `regions-freqsplit`: `gate_policy: legacy` with `fill: blocks` (the previous release) against `strict` with a
+  face region (close-up, 12 mm, hard cut), two hand regions and a hairline contact zone.
+
+  | | previous release | 0.2.0 settings |
+  |---|---|---|
+  | leaked texels | 1,397 of 13.2 M (0.01%) | 0 |
+  | held-out error, six views (mean absolute x255) | 13.82 | 14.12 |
+  | the same with the close-up held out | 17.41 | 19.69 |
+  | the same, the other five views | 13.10 | 13.00 |
+  | novel-view seam ratio / texture seam ratio | 2.73 / 2.59 | 2.57 / 2.34 |
+  | sharpness kept | 1.00 | 1.00 |
+
+  The 4.3% leak in the first-run section belongs to the experiment's original gate, which widened masks; this
+  repository's previous release already shrank them, so the leak count hardly separates the two here. Seams are
+  lower with the new settings. The mean held-out error is slightly higher because of one view: with a single
+  source for the face, the close-up is predicted worse from the other cameras. `strict` without regions or a
+  contact zone was not measured on this scene.
+
+<p align="center"><img src="gallery/gating-old-new.jpg" width="100%" alt="Target, previous release and 0.2.0 settings for two head crops, the hands and the shoes"></p>
+
+<p align="center"><sub>This repository's code on the room at 1664 px: target, previous release, 0.2.0 settings. Heads: the skin band under the hair and the smudge on the neck are gone; pale patches remain where fill meets photographed skin, and the three-quarter face is still wrong. Hands: no real change. Shoes: fewer white fragments along the rims.</sub></p>
+
+- **The whole chain once at 512 px**, including the stages that had only unit tests: `project`, `score`,
+  `pbr --synth-direct` under Blender, `render --relight --tour`, `critique` and `report`. It found four defects
+  that the unit tests had not: the floor step skipped the floor (its source rule would have refused the first
+  run's floor too), its class default picked furniture, Blender 5 names the direct-light channel differently
+  from what the code looked for, and a sky image that had gone missing since the case was made rendered every
+  relightable image magenta. All four are fixed and tested. The floor step's first real fill was a stack of
+  identical strips with dark lines between them; after a second pass it reads as planks.
+
+<p align="center"><img src="gallery/floor-synthesis-texture.jpg" width="70%" alt="Floor base colour with the generated sun patch, and with the patch replaced by planks copied from the shaded floor"></p>
+
+<p align="center"><sub>The floor's base colour at 512 px, before and after `pbr --synth-direct` with the floor named. In the base colour, the old patch against the same floor around it goes from 4.4 to 1.04 in the frontal view, 6.2 to 1.31 and 10.0 to 1.29 in the two three-quarter views and 5.3 to 1.00 in the elevated view (1 is no trace). Close up the planks are short and staggered and softer than the photograph, and a pale band of original texture remains along one edge. The shaded source here was about half the size of the patch, so repetition is expected and the stage says so.</sub></p>
+
+  On that case the light fit missed its own 10% check (median 0.87, 90th percentile 1.17, reported as a warning),
+  and the case's sky is a flat grey stand-in, so its relightable renders are not shown.
+
 Implemented but not yet exercised: `probe --check-size`, and glTF, FBX, USD, PLY and STL inputs and
 `--group-by`. The
 first run's numbers in this README came from the experiment's scripts, from which this code was ported.
@@ -429,7 +530,7 @@ CI (`.github/workflows/checks.yml`) runs the tests, `mvb2r.py --help` and a comp
 without Blender, fal or a GPU. The tests check the tools on inputs with known answers. They do not prove that a
 scene ends up looking real; that is what the contact sheets, the coverage numbers and a fresh reviewer are for.
 
-## Known limits in 0.1.0
+## Known limits in 0.2.0
 
 - **The de-light and rig fit are simpler than the first run's.** This version applies one smooth gain clamped to
   0.7 to 1.6 and fits one global scale of the scene's own lights (exposure 0, accepted when the median and
@@ -443,6 +544,21 @@ scene ends up looking real; that is what the contact sheets, the coverage number
   allows an IoU drop of 0.03 and a low-band increase of 1.0 ΔE, where the first run allowed 0.02 and 0.5. Tighten
   them in the case before the first paid call if you want the first run's rule.
 - **`critique --judge` is reserved** and does nothing yet; use `critique` with a fresh reviewer.
+- **Texture work does not repair geometry.** A hair shell stays a helmet, fingers and shoes modelled in the
+  wrong place stay doubled, and a photographed face laid on a generic head holds only near its source camera.
+  `refit` carves a shell to the generated silhouette and nothing more; the first run's remaining defects are of
+  this kind and no stage here removes them.
+- **Objects keep their photographed shading.** The de-light is one smooth gain per view, so fine shading on a
+  person or on fabric stays in the base colour and does not follow a moved light. Only large plain surfaces
+  relight convincingly.
+- **Direct-light synthesis (`pbr --synth-direct`) is opt-in and coarse.** It passes at full frame and fails
+  close up (soft, repeating texture, a colour shift), and it needs enough shaded area of the same object to
+  copy from; components without it are left unchanged and reported.
+- **Contact zones are experimental.** They are opt-in, need a spatial limit to be safe, and apply only under
+  the strict gate policy.
+- **The leak count is blind to displaced content.** It counts texels whose source pixel belongs to another
+  object within the margins; generated content shifted further than that scores zero and has to be seen in the
+  crops.
 - **A missing or refused external world image** (an HDRI linked from outside the input's folder, or a relative
   path that was not copied) is replaced by a neutral grey world with a warning, so the clay lighting differs
   from the input's (see Security and privacy).

@@ -14,6 +14,8 @@ Methods (all in linear light; detail-critical regions always take ONE source per
   register      bounded per-object flow of each view to the consensus, then multiband
   auto          AUTO_DEFAULT with per-class overrides in AUTO_BY_CLASS; detail-critical objects: best (single source)
 
+Single-source regions of detail-critical objects: under gate_policy "strict" each region has ONE dominant camera
+and a hand-over band (mvb2r/handover.py); region dicts may carry "cut" / "feather" for the low band (levels.py).
 `auto` evidence: AUTO_SOURCE below (first-run seam bake-off of the experiment, two real target sets).
 """
 from __future__ import annotations
@@ -137,9 +139,19 @@ class ObjectInput:
     bands: Callable | None = None            # bands(sigma, stack) -> (V,N,3) image-space low-pass at the texels
     resample: Callable | None = None         # resample(offsets) -> ObjectInput with re-sampled colours / bands
     targets: tuple | None = None             # per view (linear image at calibration size or None, (H, W))
+    raw_st: Stack | None = None              # stack before coherent regions were applied (None: same as st)
+    regionize: Callable | None = None        # regionize(stack) -> (stack, regions), re-run for held-out stacks
 
     def with_stack(self, st: Stack) -> "ObjectInput":
         return replace(self, st=st)
+
+    def held_out(self, k: int) -> "ObjectInput":
+        """Leave-one-view-out input: view k removed BEFORE the coherent regions are chosen (the dominant camera
+        and the hand-over are recomputed without it)."""
+        if self.regionize is None or self.raw_st is None:
+            return self.with_stack(self.st.without(k))
+        st, regions = self.regionize(self.raw_st.without(k))
+        return replace(self, st=st, regions=regions)
 
 
 @dataclass

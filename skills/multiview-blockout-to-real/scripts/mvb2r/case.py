@@ -36,8 +36,9 @@ def default_case(name: str, input_info: dict, args) -> dict:
     }
 
 
-def validate_case(cfg: dict) -> list[str]:
-    """Problems of a case.json (empty list = valid)."""
+def validate_case(cfg: dict, case=None) -> list[str]:
+    """Problems of a case.json (empty list = valid). `case`: the case folder, when known (object names of
+    views/objects.json then count as known, as `common.case_objects` treats them)."""
     errs = []
     if not isinstance(cfg, dict):
         return ["case.json must be an object"]
@@ -50,14 +51,14 @@ def validate_case(cfg: dict) -> list[str]:
         if not common.is_safe_name(o.get("name")):
             errs.append(f"object name {str(o.get('name'))[:60]!r} is not safe")
         if o.get("id") in ids or o.get("name") in names:
-            errs.append(f"duplicate object {o.get('name')!r} / id {o.get('id')}")
+            errs.append(f"duplicate object {common.clean_text(o.get('name'), 40)!r} / id {o.get('id')}")
         ids.add(o.get("id"))
         names.add(o.get("name"))
         if o.get("class", "generic") not in CLASSES:
-            errs.append(f"object {o.get('name')!r}: class {o.get('class')!r} not in {CLASSES}")
+            errs.append(f"object {common.clean_text(o.get('name'), 40)!r}: class {o.get('class')!r} not in {CLASSES}")
         for flag in ("detail_critical", "refit", "opening"):
             if not isinstance(o.get(flag, False), bool):
-                errs.append(f"object {o.get('name')!r}: {flag} must be true/false")
+                errs.append(f"object {common.clean_text(o.get('name'), 40)!r}: {flag} must be true/false")
     for r in cfg.get("references", []):
         if r.get("role") not in inputs.REFERENCE_ROLES:
             errs.append(f"reference {r.get('path')!r}: role must be one of {inputs.REFERENCE_ROLES}")
@@ -71,6 +72,53 @@ def validate_case(cfg: dict) -> list[str]:
     mc = (cfg.get("budget") or {}).get("max_calls")
     if not (isinstance(mc, int) and mc >= 0):
         errs.append("budget.max_calls must be an int >= 0")
+    return errs + fusion_errors(cfg, case) + pbr_errors(cfg)
+
+
+def _collect(errs: list, fn, *a) -> None:
+    try:
+        fn(*a)
+    except common.StageError as e:
+        errs.append(str(e))
+
+
+def _object_names(cfg: dict, case) -> list:
+    names = [o.get("name") for o in cfg.get("objects", []) if isinstance(o, dict)]
+    if case is not None and (common.views_dir(case) / "objects.json").is_file():
+        try:
+            names += [r.get("name") for r in common.load_objects(case) if isinstance(r, dict)]
+        except common.StageError:
+            pass                       # reported by the stage that needs views/objects.json
+    return names
+
+
+def fusion_errors(cfg: dict, case=None) -> list[str]:
+    """Allowed fusion keys, fill mode, gate policy / distances, per-object gate overrides and regions,
+    fusion.contacts (object names of case.json, plus views/objects.json when `case` is given); the same checks
+    run again when `project` loads the case."""
+    from . import fill, gating, handover, zones
+    f = cfg.get("fusion") or {}
+    if not isinstance(f, dict):
+        return ["fusion must be an object"]
+    errs: list[str] = []
+    objs = [o for o in cfg.get("objects", []) if isinstance(o, dict)]
+    cams = [c.get("name") for c in (cfg.get("views") or {}).get("cameras", []) if isinstance(c, dict)]
+    _collect(errs, gating.check_fusion_keys, f)
+    if f.get("fill", fill.MODES[0]) not in fill.MODES:
+        errs.append(f"fusion.fill must be one of {fill.MODES}, got {common.clean_text(repr(f.get('fill')), 80)}")
+    _collect(errs, gating.gate_options, f)
+    _collect(errs, zones.parse_contacts, f.get("contacts"), _object_names(cfg, case))
+    for o in objs:
+        _collect(errs, gating.object_gate_overrides, o)
+        _collect(errs, handover.parse_regions, o.get("regions"), o.get("name"), cams or None)
+    return errs
+
+
+def pbr_errors(cfg: dict) -> list[str]:
+    """pbr.synth_* values (the validator of the PBR sun-patch step)."""
+    from . import sunpatch_stage
+    errs: list[str] = []
+    _collect(errs, sunpatch_stage.synth_config, cfg, None)
     return errs
 
 
@@ -167,7 +215,7 @@ def run_new(args) -> int:
     cfg = {**cfg, "input": {**cfg["input"], "external_images": ext}}
     common.save_case(root, cfg)
     report_scene(scene)
-    errs = validate_case(cfg)
+    errs = validate_case(cfg, root)
     if errs:
         common.say("[new] case.json problems:\n  " + "\n  ".join(errs))
     common.say(f"[new] {len(cfg['objects'])} objects; cameras: "

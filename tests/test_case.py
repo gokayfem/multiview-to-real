@@ -28,6 +28,39 @@ def test_validate_case_reports_problems():
         assert frag in errs, frag
 
 
+def test_validate_case_checks_gate_regions_and_contacts():
+    cfg = common.load_case(synthetic_case(2))
+    names = [o["name"] for o in cfg["objects"]]
+    good = {**cfg, "fusion": {"method": "auto", "gate_policy": "legacy", "occ_margin": 4,
+                              "contacts": [{"surface": names[0], "occluder": names[1], "within_mm": 20}]},
+            "objects": [{**cfg["objects"][0], "reject_dilate": 4,
+                         "regions": [{"name": "r", "sphere": [0, 0, 0, 0.1], "cut": "hard"}]}] + cfg["objects"][1:]}
+    assert case_mod.validate_case(good) == [], case_mod.validate_case(good)
+    bad = {**cfg, "fusion": {"gate_policy": "loose", "contacts": [{"surface": names[0], "occluder": "ghost"}]},
+           "objects": [{**cfg["objects"][0], "gate_dilate": "2",
+                        "regions": [{"name": "r", "box": [[1, 1, 1], [0, 0, 0]]}]}] + cfg["objects"][1:]}
+    errs = " | ".join(case_mod.validate_case(bad))
+    for frag in ("gate_policy", "ghost", "gate_dilate", "minimum corner"):
+        assert frag in errs, (frag, errs)
+
+
+def test_validate_case_fusion_keys_fill_pbr_and_view_objects():
+    import json as _json
+    root = synthetic_case(2)
+    cfg = common.load_case(root)
+    errs = " | ".join(case_mod.validate_case({**cfg, "fusion": {"fill": "bogus", "occ_margn": 3}}))
+    assert "fill" in errs and "occ_margn" in errs and "occ_margin" in errs, errs     # allowed keys listed
+    errs = " | ".join(case_mod.validate_case({**cfg, "pbr": {"synth_direct": "yes"}}))
+    assert "synth_direct" in errs, errs
+    rows = _json.loads((root / "views" / "objects.json").read_text())
+    rows.append({"name": "OnlyInViews", "id": 99})
+    (root / "views" / "objects.json").write_text(_json.dumps(rows))
+    first = cfg["objects"][0]["name"]
+    c2 = {**cfg, "fusion": {"contacts": [{"surface": first, "occluder": "OnlyInViews"}]}}
+    assert case_mod.validate_case(c2, root) == [], case_mod.validate_case(c2, root)
+    assert any("OnlyInViews" in e for e in case_mod.validate_case(c2))
+
+
 def test_spec_rejects_non_finite_and_huge_values():
     spec = json.loads(SPEC.read_text())
     o = spec["objects"][1]

@@ -21,13 +21,19 @@ import numpy as np
 
 from mvb2r.coverage import (area_fractions, contributions, donor_colours, fill_texture, write_method_maps,
                             write_rejections)
+from mvb2r.fill import MODES as FILL_MODES, fill_reference_for, reference_colour
 from mvb2r.fusion import AUTO_EVIDENCE, LETTERS, METHODS, consistency, fuse, resolve_method
 from mvb2r.fusion_io import (StageError, case_json, linear_to_srgb, read_rgb_linear, resolve_case, safe_name,
                              write_json, write_srgb_png)
-from mvb2r.projinputs import fusion_options, load_case_inputs, object_input
+from mvb2r.fusion_io import load_mesh
+from mvb2r.projinputs import fusion_options, load_case_inputs, object_input, object_params
+from mvb2r.raster import texel_set
+from mvb2r.zones import MM, RAMP_IN, RAMP_OUT, contact_fill, contact_weights, occluder_points
 from mvb2r.texsize import choose_size
 from mvb2r.seams import texture_seam_metrics
 from mvb2r.visibility import SCORE_FORMULA, VisParams
+
+DEFAULT_FILL = FILL_MODES[0]
 
 
 def register(subparsers) -> None:
@@ -89,9 +95,10 @@ def project_case(case: Path, cfg: dict, methods: list[str], out: Path, images: P
     vis = VisParams()
     ci = load_case_inputs(case, cfg, images)
     names = [c.name for c in ci.cams]
-    cov = {"score_formula": SCORE_FORMULA, "views": names, "skipped_views": list(ci.skipped), "methods": methods, "auto_evidence": AUTO_EVIDENCE,
-           "fill_rule": "same object only: push-pull near observed texels, fading to the robust median colour "
-                        "farther away (INFERRED, plain colour, no invented detail)", "objects": {}}
+    cov = {"score_formula": SCORE_FORMULA, "gate_policy": opt["gate_policy"], "fill": opt.get("fill", DEFAULT_FILL), "views": names, "skipped_views": list(ci.skipped), "methods": methods, "auto_evidence": AUTO_EVIDENCE,
+           "fill_rule": "same object only: pull-push near observed texels, fading to a plain reference colour "
+                        "farther away (the median; for plain wall-like classes the well-lit median). "
+                        "INFERRED, no invented detail", "objects": {}}
     textures: dict = {m: {} for m in methods}
     for obj in ci.objects:
         t1 = time.time()
@@ -106,6 +113,8 @@ def project_case(case: Path, cfg: dict, methods: list[str], out: Path, images: P
         print(f"[project] {obj['name']}: R={rec['tex_size']} observed={rec['coverage']['observed']:.3f} "
               f"soft={rec['coverage']['soft']:.3f} ({time.time() - t1:.1f}s)", flush=True)
     apply_donor_fill(cov, textures, out)
+    if opt.get("gate_policy") == "strict":
+        apply_contact_fill(ci, cov, textures, out)
     write_json(out / "coverage.json", cov)
     write_json(out / "project.json", {"methods": methods, "vis_params": vis.to_dict(), "fusion_params": prm.to_dict(),
                                       "by_class": by_class, "options": opt,
@@ -125,16 +134,14 @@ def project_object(ci, obj, methods, prm, by_class, vis, opt, out: Path):
     sn = safe_name(obj["name"])
     rec = {"id": obj["id"], "class": obj["class"], "detail_critical": obj["detail_critical"], "tex_size": R, "tex_size_rule": size,
            "texels": tex.n, "opening": False, "projected": True,
-           "single_source_regions": [{"name": r["name"], "texels": int(r["mask"].sum()),
-                                      "views_in_priority": [st.view_names[i] for i in r["views"]]}
-                                     for r in oi.regions],
+           "single_source_regions": [region_record(r, st.view_names) for r in oi.regions],
            "inconsistent_sample_frac": float(consistency(st, prm).sum() / max(st.valid.sum(), 1)), "methods": {}}
     rec.update(write_rejections(out / "rejection" / sn, tex, st))
     tex_by_method = {}
     for m in methods:
         concrete = resolve_method(m, obj["class"], obj["detail_critical"], by_class)
-        res = fuse(oi, concrete, prm)
-        full = fill_texture(tex, res.color, res.observed)
+        res = fuse(oi, concrete, object_params(prm, obj, opt))
+        full, observed_med = object_fill(tex, res.color, res.observed, obj["class"], opt.get("fill", DEFAULT_FILL))
         write_method_maps(out / m / sn, tex, res, full)
         soft = res.extra.get("soft", np.zeros(tex.n, bool))
         rec["coverage"] = area_fractions(tex, res.observed, soft)
@@ -142,9 +149,18 @@ def project_object(ci, obj, methods, prm, by_class, vis, opt, out: Path):
                              "texture_seams": texture_seam_metrics(tex, linear_to_srgb(res.color), res.source,
                                                                    res.observed & ~soft),
                              "info": {k: v for k, v in res.extra.items() if k in ("info", "register_median_px")}}
-        observed_med = np.median(res.color[res.observed], 0) if res.observed.any() else None
         tex_by_method[m] = None if observed_med is None else observed_med.tolist()
     return rec, tex_by_method
+
+
+def object_fill(tex, color: np.ndarray, observed: np.ndarray, cls: str, mode: str):
+    """(filled (R,R,3) texture, colour the object donates to unobserved same-class objects or None).
+    "blocks" reproduces the previous release exactly: plain median, no well-lit reference or lift, for every
+    class; "smooth" uses the class-aware reference (fill.fill_reference_for)."""
+    reference, lift = ("median", False) if mode == "blocks" else fill_reference_for(cls)
+    full = fill_texture(tex, color, observed, mode=mode, reference=reference, lift=lift)
+    med = reference_colour(color[observed], reference) if observed.any() else None
+    return full, med
 
 
 def apply_donor_fill(cov: dict, textures: dict, out: Path, min_obs: float = 0.05) -> None:
@@ -163,6 +179,37 @@ def apply_donor_fill(cov: dict, textures: dict, out: Path, min_obs: float = 0.05
             write_srgb_png(d / "texture.png", np.where(obs[..., None], img, col[None, None]))
             r.setdefault("donor_fill", {})[m] = {"class": r["class"], "colour_linear": col.tolist(),
                                                  "rule": "median of observed same-class objects (INFERRED)"}
+
+
+def region_record(r: dict, view_names) -> dict:
+    keys = ("cut", "handover_mm", "dominant", "soft_extended", "handover_texels")
+    return {"name": r["name"], "texels": int(r["mask"].sum()),
+            "views_in_priority": [view_names[i] for i in r["views"]], **{k: r[k] for k in keys if k in r}}
+
+
+def apply_contact_fill(ci, cov: dict, medians: dict, out: Path) -> None:
+    """fusion.contacts (experimental): AFTER fill_texture, unobserved surface texels near the occluder take the
+    occluder's median observed colour (zones.contact_weights). They stay unobserved / INFERRED in every map."""
+    for c in ci.contacts:
+        rec = cov["objects"].get(c["surface"], {})
+        if not rec.get("projected"):
+            continue
+        row = next(o for o in ci.objects if o["name"] == c["surface"])
+        z = load_mesh(ci.mesh_dir, row["file"])
+        tex = texel_set(z["tri_pos"], z["tri_uv"], z["tri_nrm"], rec["tex_size"])
+        w = contact_weights(tex.P, occluder_points(ci, c["occluder"]), c["within_mm"] * MM, c["box"])
+        for m, meds in medians.items():
+            col = meds.get(c["occluder"])
+            if col is None or not w.any():
+                continue
+            d = out / m / safe_name(c["surface"])
+            obs = read_rgb_linear(d / "coverage.png")[tex.rows, tex.cols, 0] > 0.5
+            img = contact_fill(read_rgb_linear(d / "texture.png"), tex, obs, w, np.asarray(col, np.float32))
+            write_srgb_png(d / "texture.png", img)
+            rec.setdefault("contact_fill", {}).setdefault(m, []).append(
+                {"occluder": c["occluder"], "colour_linear": list(col), "within_mm": c["within_mm"],
+                 "texels": int(((w > 0) & ~obs).sum()), "rule": f"occluder median observed colour, weight 1 within "
+                 f"{RAMP_IN} x within_mm to 0 at {RAMP_OUT} x (INFERRED: counted as unobserved)"})
 
 
 def require_projection(case: Path, method: str | None = None) -> dict:

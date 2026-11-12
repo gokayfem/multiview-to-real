@@ -5,6 +5,8 @@
 
 Every mesh gets one grey Diffuse BSDF. Two renders per view, linear EXR divided by the grey albedo:
 <view>_sun.exr (SUN lights only, world off) and <view>_sky.exr (world + every other light); rig.json.
+<view>_sundirect.exr: the Diffuse Direct pass (EXR channel "DiffDir", "Diffuse Direct" in Blender 5) of the sun render (light the SUN reaches directly, no bounce,
+no albedo), used by the opt-in direct-light patch synthesis (mvb2r/sunpatch_stage.py).
 Ported from the experiment's bpy_shading_basis.py.
 """
 import json
@@ -38,6 +40,23 @@ def grey_material(g):
     return mat
 
 
+def render_component(scene, out: Path, view: str, comp: str, grey: float) -> None:
+    """One multilayer render of `comp` ("sun" or "sky"): <view>_<comp>.exr (combined / grey) and, for the sun,
+    <view>_sundirect.exr (diffuse direct, which carries no albedo) when Blender wrote that pass. Both channel
+    names are accepted: "Diffuse Direct", which Blender 5.0 writes, and "DiffDir"."""
+    set_format(scene.render.image_settings, "OPEN_EXR_MULTILAYER", "32", "RGB")
+    tmp = out / f"_{view}_{comp}.exr"
+    scene.render.filepath = str(tmp)
+    bpy.ops.render.render(write_still=True)
+    ch = read_multilayer(tmp)
+    tmp.unlink()
+    rgb = np.stack([ch[[k for k in ch if k.endswith(f"Combined.{c}")][0]] for c in "RGB"], -1) / grey
+    write_exr(out / f"{view}_{comp}.exr", rgb, ["R", "G", "B"])
+    direct = [[k for k in ch if k.endswith((f"DiffDir.{c}", f"Diffuse Direct.{c}"))] for c in "RGB"]
+    if comp == "sun" and all(direct):
+        write_exr(out / f"{view}_sundirect.exr", np.stack([ch[d[0]] for d in direct], -1), ["R", "G", "B"])
+
+
 def main():
     ap = parser(__doc__)
     ap.add_argument("--cameras", required=True)
@@ -56,6 +75,8 @@ def main():
         o.data.materials.append(mat)
     setup_cycles(scene, a.samples)
     scene.cycles.use_denoising = True
+    for vl in scene.view_layers:
+        vl.use_pass_diffuse_direct = True
     lights = [o for o in scene.objects if o.type == "LIGHT" and not o.hide_render]
     suns = [o for o in lights if o.data.type == "SUN"]
     bg = background(scene)
@@ -73,14 +94,7 @@ def main():
                 o.hide_render = (o in suns) != (comp == "sun")
             if bg is not None:
                 bg.inputs["Strength"].default_value = 0.0 if comp == "sun" else wstr
-            set_format(scene.render.image_settings, "OPEN_EXR_MULTILAYER", "32", "RGB")
-            tmp = out / f"_{v['name']}_{comp}.exr"
-            scene.render.filepath = str(tmp)
-            bpy.ops.render.render(write_still=True)
-            ch = read_multilayer(tmp)
-            tmp.unlink()
-            rgb = np.stack([ch[[k for k in ch if k.endswith(f"Combined.{c}")][0]] for c in "RGB"], -1) / a.grey
-            write_exr(out / f"{v['name']}_{comp}.exr", rgb, ["R", "G", "B"])
+            render_component(scene, out, v["name"], comp, a.grey)
         bpy.data.objects.remove(cam)
     for o in lights:
         o.hide_render = False

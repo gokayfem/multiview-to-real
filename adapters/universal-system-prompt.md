@@ -42,7 +42,9 @@ own UV texture. Everything no camera saw is called inferred.
    lighting; and a PBR scene whose base colour is the projected photo times a smooth correction, with the
    scene's own lights fitted to the targets. Report the residual baked shading.
 10. **Show the limits.** Re-render the source views, novel views, a camera move and a tour with every inferred
-    pixel tinted, and a relight comparison. A fresh reviewer who sees only the images lists what reads as wrong.
+    pixel tinted, and a relight comparison. A fresh reviewer who sees only the images lists what reads as wrong,
+    judging native-resolution crops on fixed boxes that are reused in every later round; a reduced-size sheet
+    is never the basis for acceptance.
 
 ## Rules
 

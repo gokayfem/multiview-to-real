@@ -7,7 +7,8 @@ Score of a valid sample (every factor in [0,1]):
       * E(d_edge;  m_edge,  m_edge_soft)            distance to an object-id / depth discontinuity
       * E(d_border; m_border, m_border_soft)        distance to the image border
       * align                                       alignment confidence (targets/align_conf_XX.png, 1 if absent)
-      * halo                                        < 1 in a band around other objects' clay silhouettes
+      * halo                                        < 1 in a band around other objects' clay silhouettes (legacy)
+                                                    or nearer objects' silhouettes (strict; mvb2r/gating.py)
 
     E(d; a, b) = e_min + (1 - e_min) * smoothstep((d - a) / (b - a)),
     ppt = sqrt(texel_area * fx * fy * cos_theta / (Zc^2 * cos_alpha)), alpha = off-axis angle of the ray.
@@ -34,6 +35,7 @@ REASONS = {
 HARD_REASONS = sum(v for k, v in REASONS.items() if k != "inconsistent")
 REASON_ORDER = ["behind", "off_image", "backface", "grazing", "wrong_object", "occluded", "depth_ahead",
                 "edge_margin", "self_edge", "border_margin", "low_align", "mask_gate", "inconsistent"]
+BACKGROUND_DEPTH = 1e8  # depth_z at or beyond this is background (no surface)
 REF_CAL_PX = 1664  # pixel margins below are tuned at this calibration size and scaled per camera
 SOFT_ONLY = REASONS["grazing"] | REASONS["self_edge"]  # rejected only for these -> low-confidence "soft" sample
 SCORE_FORMULA = ("s = cos * ppt/(ppt+ppt_half) * E(d_edge) * E(d_border) * align * halo; "
@@ -85,10 +87,10 @@ class ViewData:
 
 @dataclass(frozen=True)
 class Gates:
-    """Per-object image-space gates in calibration pixels (all optional)."""
-    accept: np.ndarray | None = None   # bool: texel valid only where True (the object's generated mask)
-    reject: np.ndarray | None = None   # bool: texel rejected where True (dilated union of other objects' masks)
-    score_mult: np.ndarray | None = None  # float: halo band factor
+    """Per-object image-space gates in calibration pixels (all optional); built by mvb2r/gating.py."""
+    accept: np.ndarray | None = None   # bool: texel valid only where True (generated mask / strict accept)
+    reject: np.ndarray | None = None   # bool: texel rejected where True (legacy: dilated other objects' masks)
+    score_mult: np.ndarray | None = None  # float: legacy halo / strict occluder soft-band factor
 
 
 @dataclass(frozen=True)
@@ -109,7 +111,7 @@ class ViewSamples:
 def discontinuity_distance(ids: np.ndarray, depth: np.ndarray, rel: float = 0.04, abs_m: float = 0.03) -> np.ndarray:
     """Distance (px) to the nearest object-id change or depth jump between 4-neighbours."""
     e = np.zeros(ids.shape, bool)
-    z = np.where(depth < 1e8, depth, 1e3).astype(np.float64)
+    z = np.where(depth < BACKGROUND_DEPTH, depth, 1e3).astype(np.float64)
     for a, b in (((slice(1, None), slice(None)), (slice(None, -1), slice(None))),
                  ((slice(None), slice(1, None)), (slice(None), slice(None, -1)))):
         jump = (ids[a] != ids[b]) | (np.abs(z[a] - z[b]) > abs_m + rel * np.minimum(z[a], z[b]))
@@ -135,7 +137,7 @@ def make_view(cam: Camera, depth: np.ndarray, ids: np.ndarray, image: np.ndarray
               align: np.ndarray | None = None, lowpass_sigma: float = 2.0) -> ViewData:
     if depth.shape != (cam.height, cam.width) or ids.shape != (cam.height, cam.width):
         raise ValueError(f"{cam.name}: depth {depth.shape} / ids {ids.shape} != camera {cam.height}x{cam.width}")
-    ids = np.where(depth >= 1e8, 0, ids).astype(np.int32)
+    ids = np.where(depth >= BACKGROUND_DEPTH, 0, ids).astype(np.int32)
     lp = None
     if image is not None:
         h, w = image.shape[:2]

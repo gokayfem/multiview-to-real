@@ -119,7 +119,14 @@ below means `skills/multiview-blockout-to-real/scripts/mvb2r.py`.
     (`references/consistency.md`).
 11. **Project and score.** `python3 SKILL project CASE`, then `python3 SKILL score CASE`. Look at every
     re-render, the novel views and the full-resolution crops of faces, hands, fabric and floors. Choose the
-    fusion method by leave-one-view-out and seam visibility, never by how well the source views are reproduced
+    fusion method by leave-one-view-out and seam visibility, never by how well the source views are reproduced.
+    Read `leak %` in the score table: observed texels that took another object's pixels (it cannot see content
+    displaced beyond the margins, so look at silhouettes in the crops too). Gates are `strict` by default
+    (`fusion.gate_policy`). When the feature that matters is part of a larger mesh (a face on a body, a label
+    on a product), give that object `regions` in `case.json` (a sphere or box in world metres, the camera that
+    sees it best as `prefer_view`, `"cut": "hard"`) before projecting, so it has one source and a gap before
+    the next. Where one object passes under another (skin under a hairline, a collar, a cuff) and the fill
+    shows the wrong colour, add a bounded `fusion.contacts` entry
     (`references/projection.md`, `references/seams.md`).
 12. **Decide on repair rounds** (each optional, each within the budget):
     - **Refit** (`refit CASE [--object NAME] [--mode shell]`) when a `refit` object's projection shows
@@ -136,15 +143,24 @@ below means `skills/multiview-blockout-to-real/scripts/mvb2r.py`.
 13. **PBR.** `python3 SKILL pbr CASE`. Read `pbr/eval.json`: the residual shading correlation, which views were
     left un-de-lit (their targets did not show the proxy shading), and whether the rig fit landed within 10% of
     the targets' luminance. The base colour must stay "projected photo times smooth correction"; a version that
-    falls back to material priors looks like plastic (`references/pbr.md`).
+    falls back to material priors looks like plastic. If the relight sheet shows the generated photo's own
+    direct light (a sun patch) left on a plain floor or wall, re-run with `pbr CASE --synth-direct`: it replaces
+    those texels with texture synthesised from the shaded part of the same object, marks them inferred and
+    reports the ghost with and without. It passes at full frame and not close up (`references/pbr.md`).
 14. **Render.** `python3 SKILL render CASE --move --tour --relight`. Look at the camera move (pairs of views too
     far apart for a valid in-between camera are skipped with a note), the coverage-tinted tour (a 360° pan in an
-    enclosing room, an orbit for object scenes; measured and inferred fractions per frame) and the relight sheet (the PBR scene changes, the diagnostic
-    does not; a ghost of the old sun patch is normal and is reported).
+    enclosing room, an orbit for object scenes; measured and inferred fractions per frame; its two segments are
+    joined by a dip through black) and the relight sheet (the PBR scene changes, the diagnostic does not; a
+    ghost of the old sun patch is reported, and objects whose shading stays in their texture do not respond).
 15. **Critique and report (agentic).** `python3 SKILL critique CASE` packs the clay and target of every view
-    (and the re-renders when they exist) under neutral names and prints a prompt. Start a **fresh subagent**
-    that may read only those images, give it the printed prompt, and store its JSON answer with `critique CASE
-    --save REVIEW.json` (`--judge` is reserved and does nothing yet). Then `python3 SKILL report CASE` writes
+    (and the re-renders when they exist) under neutral names, plus native-resolution crop strips on fixed
+    boxes (every detail-critical object, the worst error tiles, your own `review.crops`), and prints a prompt.
+    Start a **fresh subagent** that may read only those images, give it the printed prompt, and store its JSON
+    answer with `critique CASE --save REVIEW.json` (`--judge` is reserved and does nothing yet). It gives one
+    verdict per crop; a full-frame impression is not acceptance. After any fix, re-run the stages, then
+    `critique CASE --round round_2`: the same boxes are reused so rounds can be compared (`--new-boxes` only
+    when cameras or resolution changed). Keep a round only if it is no worse on the scores and better on those
+    crops. Then `python3 SKILL report CASE` writes
     `out/report.md`. Present the sheets, the method table, native versus resized sizes, the consistency table,
     coverage per object, the residual shading, the tour's measured and inferred fractions, the calls and their
     cost note, and what is weak. The user decides what next (`references/validation.md`).
@@ -170,7 +186,15 @@ and a call that would exceed it is refused before it starts.
 - **Refit only `refit` objects**, only from the generated masks of several views, and always re-run the passes
   afterwards; never edit geometry to match one view.
 - **Never lower an acceptance threshold after a failure.** Write a new contract for the next case instead.
-- **Prefer one coherent source per region** for `detail_critical` objects; blend only where views agree.
+- **Prefer one coherent source per region** for `detail_critical` objects; blend only where views agree. One
+  source is necessary, not sufficient: a photograph laid on a proxy of a different shape holds only near its
+  source camera.
+- **Name the cause before choosing the fix.** Sort each defect into gating (wrong-object pixels at silhouettes),
+  fusion (steps between sources), geometry (the proxy is not where the photographed surface is: shells for hair,
+  fingers, a face on a generic head), coverage (never seen) or generation (the views disagree). Texture work
+  does not repair geometry; after two rounds that leave a defect unchanged, stop and say it needs geometry.
+- **A fix round is kept only if** it is no worse on the scores and better on the reviewer's crops. Scores can
+  improve while a new defect appears, so the review is repeated after every round.
 
 ## Hard rules
 
@@ -193,8 +217,9 @@ and a call that would exceed it is refused before it starts.
 - **Paid calls.** Only parameters present in the endpoint's fetched schema (no invented seed, strength,
   negative prompt or control inputs); every call logged; cached; no automatic retries; the case budget is a hard
   stop. A `$0` price placeholder is recorded as unknown, never as free. `FAL_KEY` is never printed or written.
-- **Fresh reviewers only.** The reviewer sees only its images under neutral names, nothing about the method or
-  the scores. Do not review your own renders.
+- **Fresh reviewers only, at full size.** The reviewer sees only its images under neutral names, nothing about
+  the method or the scores. Do not review your own renders, and never accept from a reduced-size sheet:
+  acceptance is the reviewer's verdict per native-resolution crop, on boxes that stay fixed across rounds.
 
 ## References
 
@@ -204,11 +229,11 @@ and a call that would exceed it is refused before it starts.
 | `references/cameras.md` | placing cameras, overlap and coverage, close-ups, what an arc cannot see |
 | `references/generation.md` | the grid, reference order, probing sizes, the edit, refinement and acceptance |
 | `references/consistency.md` | the cross-view score, what its numbers mean, when to resync |
-| `references/projection.md` | visibility tests, the view score, masks, coverage maps, inferred fill |
-| `references/seams.md` | the fusion methods and how they are scored |
+| `references/projection.md` | visibility tests, the view score, the gate policy, regions, contact zones, coverage maps, inferred fill |
+| `references/seams.md` | the fusion methods, how they are scored, the leak count, the fix rounds |
 | `references/geometry.md` | assets, contact, UV overlap repair, refit by carving |
-| `references/pbr.md` | de-lighting, materials, the rig fit, relight honesty |
-| `references/validation.md` | round trip, leave-one-view-out, the fresh reviewer, the report |
+| `references/pbr.md` | de-lighting, materials, the rig fit, direct-light patch synthesis, relight honesty |
+| `references/validation.md` | round trip, leave-one-view-out, the fresh reviewer, full-size crops and rounds, the report |
 | `references/conventions.md` | coordinates, depth, pixel convention, file formats, case layout |
 | `references/lessons.md` | what went wrong in the first run and the rule each failure became |
 

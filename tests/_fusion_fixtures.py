@@ -71,3 +71,58 @@ def dense_quad(n=60, size=2.0, uv_lo=0.0, uv_hi=1.0):
                 UV.append([[t[x], t[y]] for x, y in tri])
     P, UV = np.array(P), np.array(UV)
     return P, UV, np.tile([0, 0, 1.0], (len(P), 3, 1))
+
+
+def composite(layers):
+    """Nearest-wins composite of render_quad outputs [(depth, ids, img), ...]."""
+    depth = np.min([d for d, _, _ in layers], 0)
+    pick = np.argmin([d for d, _, _ in layers], 0)
+    ids = np.choose(pick, [i for _, i, _ in layers]).astype(np.int32)
+    ids = np.where(depth >= 1e8, 0, ids)
+    img = None
+    if all(im is not None for _, _, im in layers):
+        img = np.choose(pick[..., None], [im for _, _, im in layers]).astype(np.float32)
+    return depth.astype(np.float32), ids, img
+
+
+def shift_mask(m, dx=0, dy=0):
+    """Mask shifted by whole pixels (misregistered generated mask)."""
+    return np.roll(np.roll(m, dy, 0), dx, 1)
+
+
+def two_object_case(W=128, n_views=2, shift=2, masks=("Card",)):
+    """CaseInputs of a floor quad (id 1, z=0, 2 m) and a card quad (id 2, z=0.4, 0.6 m) above it, top cameras.
+    Generated masks: the clay silhouette of each object named in `masks`, shifted by `shift` px."""
+    from pathlib import Path
+    from mvb2r.projinputs import CaseInputs
+    from mvb2r.visibility import make_view
+    cams = tuple(top_camera(f"view_0{k + 1}", W=W, x=x, height=2.6)
+                 for k, x in enumerate((-0.3, 0.3, 0.0)[:n_views]))
+    views, mk = [], {}
+    for vi, cam in enumerate(cams):
+        floor = render_quad(cam, oid=1, z=0.0, size=2.0, colour_fn=checker)
+        card = render_quad(cam, oid=2, z=0.4, size=0.6, colour_fn=lambda X, Y: np.full(X.shape + (3,), 0.7, np.float32))
+        depth, ids, img = composite([floor, card])
+        views.append(make_view(cam, depth, ids, img))
+        for name, oid in (("Floor", 1), ("Card", 2)):
+            if name in masks:
+                mk[(name, vi)] = shift_mask(ids == oid, shift, 0)
+    objects = tuple({"name": n, "id": i, "file": f"{n}.npz", "class": "generic", "detail_critical": False,
+                     "prefer_view": None, "opening": False} for n, i in (("Floor", 1), ("Card", 2)))
+    return CaseInputs(case=Path("."), cfg={}, cams=cams, views=tuple(views), objects=objects, masks=mk,
+                      mesh_dir=Path("."))
+
+
+def with_meshes(ci, folder, card_regions=None, detail_critical=False):
+    """`ci` with real mesh files (mesh_001.npz floor, mesh_002.npz card) in `folder` (a new temp dir)."""
+    from dataclasses import replace
+    from pathlib import Path
+    folder = Path(folder)
+    for k, (size, z) in enumerate(((2.0, 0.0), (0.6, 0.4)), start=1):
+        P, UV, N = dense_quad(8, size)
+        P = P + np.array([0, 0, z])
+        np.savez(folder / f"mesh_{k:03d}.npz", tri_pos=P, tri_uv=UV, tri_nrm=N)
+    objs = tuple({**o, "file": f"mesh_{o['id']:03d}.npz"} for o in ci.objects)
+    objs = tuple({**o, "detail_critical": detail_critical, "regions": card_regions or ()} if o["name"] == "Card"
+                 else o for o in objs)
+    return replace(ci, objects=objs, mesh_dir=folder)

@@ -1,5 +1,62 @@
 # Changelog
 
+## [0.2.0] — 2026-11-12
+
+The fix rounds that followed an independent review of the first run, ported into the toolkit, reviewed and run
+once on real data.
+
+- **Gate policy.** `fusion.gate_policy`: `strict` (new default) or `legacy` (the 0.1.0 gates, pinned bit for
+  bit). Strict erodes the object's own region (with a fallback for thin objects) and its generated mask, rejects
+  every other object's mask, and keeps a hard and a soft margin around every nearer object's silhouette. Strict
+  margins scale with the camera size in both directions, never below 1 px.
+- **Single-source regions with a gap.** A detail-critical region takes one dominant camera; other cameras start
+  only `handover_mm` away, and the gap is filled. `objects[].regions` defines regions inside a mesh (a sphere or
+  a box in world metres, a preferred view, a feathered or hard cut).
+- **Contact zones (experimental, opt-in).** `fusion.contacts`: where one surface passes under another object,
+  it takes that object's photographed colour instead of a fill of its own, inside a spatial limit.
+- **Leak count in `score`**, and a leave-one-view-out evaluation mask that does not depend on the gate policy or
+  on any margin setting. `score` refuses to run when the policy, fill or view list differ from what `project`
+  recorded.
+- **Smooth fill.** A Gaussian pull-push replaces the box push-pull; plain wall-like classes fade to the median of
+  their well-lit texels. `fusion.fill: "blocks"` with `gate_policy: "legacy"` reproduces 0.1.0 exactly.
+- **Review at full size.** `critique` writes native-resolution crop strips on fixed boxes that are reused in
+  every round (`--round NAME`, `--new-boxes`, `review.crops` in `case.json`); the reviewer gives one verdict per
+  crop. The report lists the gate policy, the leak, the tour transition and the review rounds.
+- **Tour.** The two segments are joined by a dip through black.
+- **Direct-light patch synthesis (opt-in).** `pbr --synth-direct` with the surfaces named in
+  `pbr.synth_objects` replaces the generated photo's own direct-light patch with texture copied from the shaded
+  part of the same object, marks it inferred and reports the source size. The relight test's old-patch measure
+  now compares each object with itself.
+- **A missing sky image no longer renders magenta** in the relightable stages: every Blender script on that side
+  replaces it with the clay stage's neutral grey and prints a warning.
+- **Validation.** Unknown keys under `fusion` are an error that lists the allowed ones; every new value is
+  type-checked and bounded (pixel settings at most 256, list lengths at most 64, distances finite).
+- **Hardening found in a security review of this change:** nothing is deleted or written through a symbolic
+  link planted in a case folder (`common.owned_path`; the first version of the new `critique` clean-up would
+  have emptied the link's target; the JSON writer's temporary file and `out/report.md` are covered too); object names can no longer put a line of their own into error text; files
+  named in `targets.json` are checked to be inside the case before they are copied.
+- **Found in code review and fixed before release:** the gap around a single-source region could be refilled
+  from another camera's low-confidence samples; `legacy` with `blocks` did not reproduce 0.1.0 for plaster and
+  paint; the floor step kept a bright line where a patch met its UV chart's edge, and reported a patch as
+  filled when no block of its source fitted; the neutral stand-in for a missing sky would have dropped the
+  original world from saved files (it is now kept in the file).
+- **Found on real data and fixed before release:** fixed-size margins swallowed a thin object at 320 px; the
+  floor step skipped the floor, selected furniture by class, looked for Blender's direct-light channel under
+  the wrong name and painted stacked strips; the magenta sky above.
+- Tests (`python3 tests/run_tests.py`, 2026-11-12, macOS, Blender 5.0.1 found): 231 of 231 passed, 0 skipped
+  (123 in 0.1.0).
+- Runs by hand with this code and the first run's existing images: old against new gating on the 15-object
+  room at 1664 px (leak 0.01% against 0; held-out error 13.82 against 14.12, higher only with the close-up
+  held out; novel-view seam ratio 2.73 against 2.57), and the whole chain once at 512 px including
+  `pbr --synth-direct`, `render --relight --tour`, `critique` and `report`. `strict` without regions or a
+  contact zone was not measured on the real scene; no paid call was made for this release.
+- Documentation: the first-run section of the README now carries the independent review, the three fix rounds
+  and the reviewer's final verdict; `references/lessons.md` has fourteen new entries; the reference pages no
+  longer repeat a builder's claim the review contradicted.
+- Known limits added: texture work does not repair geometry; objects keep their photographed shading under new
+  light; the floor step passes at full frame and fails close up; the leak count is blind to content displaced
+  beyond the margins.
+
 ## [0.1.0] — 2026-11-12
 
 First version.

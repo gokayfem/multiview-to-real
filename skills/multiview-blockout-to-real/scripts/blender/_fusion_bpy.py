@@ -25,6 +25,61 @@ def open_blend(path):
     if not p.is_file():
         raise SystemExit(f"missing .blend {p}")
     bpy.ops.wm.open_mainfile(filepath=str(p.resolve()), load_ui=False, use_scripts=False)
+    for scene in bpy.data.scenes:
+        neutral_world_if_missing(scene)
+
+
+NEUTRAL_WORLD_COLOUR = (0.6, 0.62, 0.65, 1.0)   # the same grey the clay stage uses (blender/clay.py)
+WARNING_TAG = "[mvb2r] WARNING"                  # lines with this tag are echoed by mvb2r.fusion_io.run_blender
+
+
+def _image_loads(img) -> bool:
+    if img is None:
+        return False
+    if img.packed_file is not None or img.source in ("GENERATED", "VIEWER", "TILED"):
+        return True     # tiled (UDIM) paths carry a token and are not judged here
+    try:
+        return Path(bpy.path.abspath(img.filepath)).is_file()
+    except (RuntimeError, ReferenceError):
+        return False
+
+
+def _nodes_feeding_output(tree) -> list:
+    """Nodes connected, directly or through other nodes, to the tree's output (unconnected ones do not render)."""
+    seen, todo = [], [n for n in tree.nodes if n.type == "OUTPUT_WORLD"]
+    while todo:
+        node = todo.pop()
+        if node in seen:
+            continue
+        seen.append(node)
+        todo.extend(link.from_node for sock in node.inputs for link in sock.links)
+    return seen
+
+
+def neutral_world_if_missing(scene) -> bool:
+    """A world whose image cannot load (a case moved since `new`, an old case) renders the missing-texture
+    magenta into every image and every light fit: use the clay stage's neutral grey instead and say so. The
+    original world is KEPT in the file (fake user, name in scene["mvb2r_original_world"]), so a script that
+    saves afterwards (final.blend, the refit blockout) does not lose it."""
+    w = scene.world
+    if w is None or not w.use_nodes or w.node_tree is None:
+        return False
+    bad = [n for n in _nodes_feeding_output(w.node_tree)
+           if n.type in ("TEX_ENVIRONMENT", "TEX_IMAGE") and not _image_loads(n.image)]
+    if not bad:
+        return False
+    w.use_fake_user = True
+    scene["mvb2r_original_world"] = w.name
+    nw = bpy.data.worlds.new("mvb2r_neutral_world")
+    nw.use_nodes = True
+    bg = nw.node_tree.nodes["Background"]
+    bg.inputs["Color"].default_value = NEUTRAL_WORLD_COLOUR
+    bg.inputs["Strength"].default_value = 1.0
+    scene.world = nw
+    print(f"{WARNING_TAG} the scene's world uses a missing image: a neutral grey world is used for this stage "
+          "(the original sky lighting is NOT used; the original world is kept in the file; restore the image "
+          "or re-run `new`)", flush=True)
+    return True
 
 
 def load_views(path):

@@ -122,3 +122,57 @@ mesh.
 
 **Caveat.** The second set was refined from a fused re-render of the first, so part of its agreement is
 inherited and its absolute LOO is optimistic; rankings within a set are fair.
+
+## Gate policy and coherent regions (fix rounds 2 and 3)
+
+An independent review of the first delivery found wrong-object pixels on surfaces and a double-exposure look
+where adjacent cameras met on one face. Two fix rounds changed the gates and the single-source regions, not the
+fusion method (still C+S8). The repository's version: `fusion.gate_policy` (`"strict"` default, `"legacy"`;
+table in `projection.md`), `mvb2r/handover.py` and `fusion.contacts` (experimental).
+
+**Coherent regions with a hand-over band** (`detail_critical` objects under `strict`). One dominant camera per
+region (`prefer_view` when it sees the region, else the largest total score); its soft samples count inside the
+region; other cameras only on region texels at least `handover_mm` (default 5 mm, 3D distance) from the dominant
+camera's coverage; the band between stays unobserved and is filled from the same object. In the low band the
+hand-over is either feathered (`"cut": "feather"`, default, 16 texels at the 2048 reference) or cut hard
+(`"cut": "hard"`: single source in both bands). Label cells are half size on these objects (8 instead of 16
+texels: no rectangular patches on jaw and neck). Without `objects[].regions` every connected part is a region
+with these defaults.
+
+| region (first run) | setting | the builder's read | the independent reviewer, at 100% |
+|---|---|---|---|
+| hands, shoes | dominant camera, 5 mm, feather | ghost fingers and the pink finger on the trousers gone; parts of the back of the hands became smooth fill | trouser-coloured fingertips gone; fingers still rubbery and doubled, shoes read as slippers with white rims |
+| face, front neck (round 2) | dominant camera, 5 mm, feather | no second jaw copy; her left cheek and under the jaw became smooth fill | introduced a pink band under the hair (below) |
+| face, front neck (round 3) | dominant camera, 12 mm, `hard` | no second eye in any source or novel view; small lighter patches where fill meets observed skin | doubled eye and jaw still there in one three-quarter source view and one novel view; patched jaw and neck unchanged |
+| hairline (round 3) | contact zone 20 mm, limited to above eye level / behind the head | the pink band under the hair gone; without the limit, dark bands down the cheek | gone in five reviewed views, a small wedge left in two; a drawn hairline in the close-up |
+
+The two columns disagree on the face, and the reviewer's is the one to trust: the builder looked at fewer views.
+
+**Leak** (`score.json` `leak`, `mvb2r/leak.py`): an observed texel is leaked when its exact source pixel lies in
+pixels the generated image assigns to another object (masked objects: outside the own undilated mask or inside
+another object's mask; others: inside any other object's mask or within 2 px of a nearer object's clay). It is
+independent of the gate used for fusion, and blind to generated content displaced beyond those margins: the
+wall and floor leaks of the first run scored 0 and were judged on contact sheets.
+
+| object (the experiment's scripts) | its original gate (masks dilated 2 px) | its strict gate |
+|---|---|---|
+| skin | 231,691 / 5.44 M (4.3 %) | 0 |
+| knit top | 22,328 / 0.95 M (2.3 %) | 0 |
+| trousers | 7,272 / 1.22 M (0.6 %) | 0 |
+| shoes | 3,294 / 0.81 M (0.4 %) | 0 |
+| hair, every background object | 0 | 0 |
+
+**Scores** (C+S8, mean of floor, back wall, sofa, knit top, skin; the leave-one-view-out evaluation mask uses the
+legacy gate for every policy, so the sets are judged on the same pixels; strict observes fewer texels, so its
+scored set is a subset):
+
+| set | LOO PSNR px / view-mean | LOO LF / HF | sharpness | novel seam step / ratio | texture coarse seam |
+|---|---|---|---|---|---|
+| best (legacy) | 28.17 / 28.24 | 30.45 / 34.31 | 0.768 | 4.29 / 1.80 | 4.22 |
+| best2 (strict) | **28.29 / 28.37** | 30.49 / 34.65 | 0.743 | **4.12** / 1.65 | 3.93 |
+| best3 (strict + 12 mm hard face cut + hairline zone + sofa 4 px) | 28.27 / 28.36 | 30.46 / 34.64 | 0.742 | 4.14 / 1.64 | 3.77 |
+
+What the skin paid: sharpness 0.94 -> 0.85 (best3 0.851), observed area 0.237 -> 0.197, texture coarse seam
+7.04 -> 8.30 (best3 7.35); its LOO PSNR rose 23.12 -> 23.38 (best3 23.27). Back wall seam step 1.74 -> 1.08.
+Unchanged by gating: a sweater wedge on the hip (clay geometry where the photo shows trousers) and a white spot on
+the hair shell (geometry).

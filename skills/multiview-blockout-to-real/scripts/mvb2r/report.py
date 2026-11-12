@@ -1,18 +1,20 @@
 """`report` (out/report.md from the files that exist) and `critique` (pack sheets for a FRESH reviewer).
 
     mvb2r.py report CASE
-    mvb2r.py critique CASE                 pack out/sheets/critique_in/ and print the reviewer prompt
-    mvb2r.py critique CASE --save FILE     validate the reviewer's JSON -> out/sheets/critique.json
+    mvb2r.py critique CASE [--round NAME] [--new-boxes]
+                                           pack out/sheets/critique_in/ (+ native crops/<round>/) and print the prompt
+    mvb2r.py critique CASE --save FILE [--round NAME]
+                                           validate the reviewer's JSON -> out/sheets/critique[_<round>].json
 
 The report states only what files show: sizes requested vs returned (from the downloaded files), the native
 vs resized size of every target, the per-view acceptance table, consistency, coverage, calls and cost notes,
 and the limits. Sections whose inputs are missing say which command produces them. The fusion half's
 proj/*/score.json and pbr/eval.json are summarised when present.
+
+`critique` judges at native resolution on fixed crop boxes (mvb2r.crops): out/sheets/crop_boxes.json is written
+the first time and reused by every later round, so rounds can be compared; full-frame impressions do not count.
 """
 from __future__ import annotations
-
-import json
-import shutil
 
 import numpy as np
 
@@ -142,6 +144,10 @@ def section_fusion(case) -> list[str]:
         n_rr = len(list((case / "proj" / m / "rerender").glob("view_*.png")))
         rows.append(f"- method `{m}`: {n_rr} re-renders, {n_sheet} contact sheets"
                     + ("" if n_sheet else " (no sheets written for this method)"))
+    cov = _j(case, "proj/coverage.json")
+    if isinstance(cov, dict) and cov.get("gate_policy"):
+        rows.append(f"- projected with gate policy `{common.clean_text(cov['gate_policy'], 20)}`, fill "
+                    f"`{common.clean_text(cov.get('fill', 'not recorded'), 20)}` (proj/coverage.json)")
     score = _j(case, "proj/score.json")
     if score is not None:
         keys = sorted(score) if isinstance(score, dict) else []
@@ -168,6 +174,57 @@ def section_texture_coverage(case) -> list[str]:
     if isinstance(tour, dict) and "measured_fraction_mean" in tour:
         rows += ["", f"360 deg tour: on average {tour['measured_fraction_mean']:.0%} of the visible surface is measured "
                      f"and {tour.get('inferred_fraction_mean', 1 - tour['measured_fraction_mean']):.0%} inferred."]
+        rows += _transition_row(tour)
+    return rows + [""]
+
+
+def _transition_row(tour: dict) -> list[str]:
+    t = tour.get("transition")
+    if not isinstance(t, dict):
+        return []
+    if t.get("kind") == "dip_to_black":
+        return [f"Tour transition: dip through black ({t.get('fade_out_s')} s out, {t.get('fade_in_s')} s in) after "
+                f"the first {tour.get('first_segment_frames')} frames (pan / orbit), then the arc through the cameras."]
+    return [f"Tour transition: none ({common.clean_text(t.get('reason', 'not recorded'), 80)})."]
+
+
+def _num(x, digits: int | None = None) -> str:
+    """A number from a JSON file for a table cell: "-" when missing or None."""
+    if isinstance(x, bool) or not isinstance(x, (int, float)):
+        return "-"
+    return f"{x:.{digits}f}" if digits is not None else str(x)
+
+
+def section_leak(case) -> list[str]:
+    score = _j(case, "proj/score.json")
+    leak = score.get("leak") if isinstance(score, dict) else None
+    if not isinstance(leak, dict) or not isinstance(leak.get("per_method"), dict):
+        return []
+    rows = ["## Leak (proj/score.json)", "", common.clean_text(leak.get("definition", ""), 300), "",
+            "| method | leaked fraction | worst objects (leaked / observed) |", "|---|---|---|"]
+    for m, r in sorted(leak["per_method"].items()):
+        objs = r.get("objects") if isinstance(r, dict) and isinstance(r.get("objects"), dict) else {}
+        worst = sorted(((n, o) for n, o in objs.items() if isinstance(o, dict)), reverse=True,
+                       key=lambda x: x[1].get("fraction") if isinstance(x[1].get("fraction"), (int, float)) else -1)[:3]
+        frac = r.get("leaked_fraction") if isinstance(r, dict) else None
+        rows.append(f"| {common.clean_text(m, 40)} | {_num(frac, 4)} | " + ", ".join(
+            f"{common.clean_text(n, 40)} {_num(o.get('fraction'), 3)} ({_num(o.get('leaked'))}/{_num(o.get('observed'))})"
+            for n, o in worst) + " |")
+    return rows + [""]
+
+
+def section_review(case) -> list[str]:
+    from . import crops                       # lazy: OpenCV is not needed to start the CLI
+    boxes = _j(case, str(crops.BOXES_FILE))
+    if not isinstance(boxes, dict) or not isinstance(boxes.get("boxes"), list):
+        return []
+    rounds = sorted(p.name for p in (case / "out" / "sheets" / "critique_in" / "crops").glob("*") if p.is_dir())
+    rows = ["## Review crops", "", f"- {len(boxes['boxes'])} fixed crop boxes in {crops.BOXES_FILE} (reused every "
+            f"round; native-resolution strips in out/sheets/critique_in/crops/<round>/; rounds: {', '.join(rounds) or '-'})"]
+    verdicts = (_j(case, "out/sheets/critique.json") or {}).get("crops")
+    if isinstance(verdicts, dict) and verdicts:
+        n_pass = sum(1 for v in verdicts.values() if isinstance(v, dict) and v.get("verdict") == "pass")
+        rows.append(f"- last saved review: {n_pass} of {len(verdicts)} crops pass")
     return rows + [""]
 
 
@@ -228,7 +285,8 @@ def build_report(case) -> str:
              f"{len(cfg['views'].get('cameras', []))} views at {cfg['views']['resolution']} px, generator "
              f"`{cfg['model']['generator']}` ({cfg['model'].get('edit_endpoint')}).", ""]
     for sec in (section_views, section_coverage, section_generation, section_targets, section_consistency,
-                section_calls, section_stale, section_fusion, section_texture_coverage, section_pbr, section_run):
+                section_calls, section_stale, section_fusion, section_leak, section_texture_coverage, section_review,
+                section_pbr, section_run):
         lines += sec(case)
     lines += ["## Limits", ""] + [f"- {x}" for x in LIMITS]
     return scrub_paths("\n".join(lines) + "\n", case)
@@ -242,57 +300,6 @@ def scrub_paths(text: str, case) -> str:
     return text
 
 
-# ---------------------------------------------------------------- critique
-CRITIQUE_PROMPT = """You are shown {n} pairs of images of the same scene, one pair per camera:
-  clay_<view>.png (a grey 3D render: the geometry authority) and photo_<view>.png (a generated photograph).
-Files render_<method>_<view>.png, when present, are 3D re-renders of the textured scene by each fusion method:
-judge them against photo_<view>.png under "methods" (seams, smears, misplaced detail).
-Look only at these files. For each view answer:
-  "geometry_ok": true/false (same objects, positions, silhouettes and framing as the clay),
-  "problems": [{{"what": "...", "bbox": [x0, y0, x1, y1], "severity": 1-5}}],
-and overall: "cross_view": do materials, colours and light agree across views? List disagreements.
-Answer with JSON only: {{"views": {{"view_01": {{"geometry_ok": true, "problems": []}}}}, "cross_view": "..."}}"""
-
-
-def pack_critique(case) -> int:
-    t = _j(case, "targets/targets.json")
-    if not t:
-        raise common.StageError(f"missing targets/targets.json - run `mvb2r.py targets {case}` first")
-    out = case / "out" / "sheets" / "critique_in"
-    if out.exists():
-        shutil.rmtree(out)
-    out.mkdir(parents=True)
-    for v, x in sorted(t["views"].items()):
-        if x.get("usable") is False:
-            continue
-        shutil.copyfile(common.views_dir(case) / v / "clay.png", out / f"clay_{v}.png")
-        shutil.copyfile(case / x["target_png"], out / f"photo_{v}.png")
-        for m in _methods(case):
-            rr = case / "proj" / m / "rerender" / f"{v}.png"
-            if rr.is_file():
-                shutil.copyfile(rr, out / f"render_{common.file_token(m)}_{v}.png")
-    prompt = CRITIQUE_PROMPT.format(n=len(t["views"]))
-    (out / "PROMPT.txt").write_text(scrub_paths(prompt, case) + "\n")
-    common.say(f"[critique] packed {len(t['views'])} pairs in {common.rel(case, out)}. Give ONLY these files and this prompt "
-               f"to a NEW reviewer that has seen nothing of the case, then save its answer with --save FILE:\n\n{prompt}")
-    return 0
-
-
-def save_critique(case, path) -> int:
-    try:
-        data = json.loads(open(path).read())
-    except (OSError, json.JSONDecodeError) as e:
-        raise common.StageError(f"critique answer {path} is not JSON: {e}") from e
-    if not isinstance(data, dict) or not isinstance(data.get("views"), dict):
-        raise common.StageError("critique answer must be an object with a 'views' object")
-    for v, r in data["views"].items():
-        if not isinstance(r, dict) or not isinstance(r.get("geometry_ok"), bool) or not isinstance(r.get("problems", []), list):
-            raise common.StageError(f"critique answer for {common.clean_text(v, 20)!r} is malformed")
-    common.write_json(case / "out" / "sheets" / "critique.json", data)
-    common.say("[critique] saved out/sheets/critique.json")
-    return 0
-
-
 def register(sub) -> None:
     p = sub.add_parser("report", help="out/report.md from the files that exist")
     p.add_argument("case")
@@ -300,6 +307,10 @@ def register(sub) -> None:
     c = sub.add_parser("critique", help="pack clay/photo pairs for a fresh reviewer; --save validates its answer")
     c.add_argument("case")
     c.add_argument("--save", default=None)
+    c.add_argument("--round", default=None, help="review round name: native crop strips land in "
+                   "out/sheets/critique_in/crops/<round>/; earlier rounds are kept")
+    c.add_argument("--new-boxes", action="store_true",
+                   help="recompute out/sheets/crop_boxes.json (default: reuse the boxes of earlier rounds)")
     c.add_argument("--judge", action="store_true", help="(reserved) blind judge of final renders")
     c.set_defaults(func=run_critique)
 
@@ -307,13 +318,14 @@ def register(sub) -> None:
 def run_report(args) -> int:
     case = common.case_dir(args.case)
     text = build_report(case)
-    out = case / "out" / "report.md"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(text)
+    out = common.write_text_in_case(case, "out/report.md", text)
     common.say(f"[report] wrote {common.rel(case, out)} ({len(text.splitlines())} lines)")
     return 0
 
 
 def run_critique(args) -> int:
+    from .critique import pack_critique, save_critique
     case = common.case_dir(args.case)
-    return save_critique(case, args.save) if args.save else pack_critique(case)
+    rnd = getattr(args, "round", None)
+    return save_critique(case, args.save, rnd) if args.save else \
+        pack_critique(case, rnd, getattr(args, "new_boxes", False))

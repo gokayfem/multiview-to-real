@@ -196,6 +196,34 @@ def inside_case(case, path) -> Path:
     return p
 
 
+def owned_path(case, path) -> Path:
+    """`path` (relative to the case, or absolute inside it) as something this run may create, empty, delete or
+    write: refused when it leaves the case, or when it or any folder between it and the case root is a symbolic
+    link. Links are NOT followed: a case folder from someone else can plant one (out/sheets/critique_in ->
+    a folder elsewhere), and clearing or writing through it would destroy or overwrite files outside the case.
+    Use it before every rmtree, unlink and write into a folder the stage empties; `inside_case` is for reads."""
+    root = case_dir(case)
+    raw = Path(path)
+    outside = StageError(f"{str(path)[:120]!r} is outside the case folder {root.name}/: nothing outside the case "
+                         "is deleted or written")
+    if raw.is_absolute():
+        absolute = Path(os.path.abspath(raw))
+        bases = [b for b in (root, Path(os.path.abspath(Path(case).expanduser()))) if absolute.is_relative_to(b)]
+        if not bases:
+            raise outside
+        raw = absolute.relative_to(bases[0])
+    parts = Path(os.path.normpath(raw)).parts
+    if ".." in parts:
+        raise outside
+    cur = root
+    for part in parts:
+        cur = cur / part
+        if cur.is_symlink():
+            raise StageError(f"{clean_text(cur.relative_to(root), 120)} in the case folder is a symbolic link; "
+                             "refusing to delete or write through it (replace it with a real folder)")
+    return cur
+
+
 def require(path: Path, producer: str) -> Path:
     """Return path, or fail naming the file and the command that writes it."""
     path = Path(path)
@@ -233,12 +261,27 @@ def case_objects(case) -> list[dict]:
 
 # ---------------------------------------------------------------- JSON / hashes
 def write_json(path, data) -> None:
+    """Atomic JSON write. Neither the file nor its temporary sibling may be a symbolic link: a case folder from
+    someone else can plant one, and the write would land outside the case."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
-    with open(tmp, "w") as f:
+    for p in (path, tmp):
+        if p.is_symlink():
+            raise StageError(f"{clean_text(p.name, 80)} is a symbolic link; refusing to write through it "
+                             "(replace it with a real file)")
+    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0)
+    with os.fdopen(os.open(tmp, flags, 0o644), "w") as f:
         json.dump(data, f, indent=1, default=_json_default)
     os.replace(tmp, path)
+
+
+def write_text_in_case(case, path, text: str) -> Path:
+    """Write a text file this stage owns (out/report.md); refused through a planted link (owned_path)."""
+    out = owned_path(case, path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(text)
+    return out
 
 
 def _json_default(o):

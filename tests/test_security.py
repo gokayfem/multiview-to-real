@@ -172,6 +172,65 @@ def test_uploads_and_reads_stay_inside_the_case():
         raise AssertionError(bad)
 
 
+def test_paths_this_run_deletes_or_writes_never_go_through_a_planted_link():
+    """A case folder from someone else can ship out/sheets/critique_in (or pbr/, or a frames folder) as a symbolic
+    link to a folder outside the case; clearing or writing through it would destroy or overwrite files there."""
+    case = tmpdir()
+    victim = tmpdir() / "victim"
+    victim.mkdir()
+    (victim / "keep.txt").write_text("x")
+    (case / "out" / "sheets").mkdir(parents=True)
+    assert common.owned_path(case, "out/sheets/critique_in") == case.resolve() / "out" / "sheets" / "critique_in"
+    assert common.owned_path(case, case / "out" / "sheets" / "critique_in") == case.resolve() / "out" / "sheets" / "critique_in"
+    (case / "out" / "sheets" / "critique_in").symlink_to(victim, target_is_directory=True)
+    (case / "pbr").symlink_to(victim, target_is_directory=True)
+    for bad in ("out/sheets/critique_in", "out/sheets/critique_in/crops/round_1", "pbr/textures/Floor/synth_mask.png",
+                "../elsewhere", str(victim), "out/../../x"):
+        try:
+            common.owned_path(case, bad)
+        except common.StageError as e:
+            assert "symbolic link" in str(e) or "outside the case" in str(e), e
+            continue
+        raise AssertionError(bad)
+    assert (victim / "keep.txt").read_text() == "x"
+
+
+def test_json_text_and_rerender_io_do_not_follow_planted_links():
+    """write_json's temporary sibling, a stage's own text output (out/report.md) and the re-renders copied into
+    the reviewer pack: a planted link must neither be written through nor read from outside the case."""
+    case = tmpdir()
+    victim = tmpdir() / "victim.txt"
+    victim.write_text("keep")
+    (case / "out").mkdir()
+    (case / "out" / "a.json.tmp").symlink_to(victim)
+    (case / "out" / "b.json").symlink_to(victim)
+    (case / "out" / "report.md").symlink_to(victim)
+    for attempt in (lambda: common.write_json(case / "out" / "a.json", {"x": 1}),
+                    lambda: common.write_json(case / "out" / "b.json", {"x": 1}),
+                    lambda: common.write_text_in_case(case, "out/report.md", "REPORT")):
+        try:
+            attempt()
+        except common.StageError as e:
+            assert "symbolic link" in str(e), e
+        else:
+            raise AssertionError("a write went through a planted link")
+        assert victim.read_text() == "keep"
+    common.write_json(case / "out" / "ok.json", {"x": 1})
+    assert common.read_json(case / "out" / "ok.json") == {"x": 1} and not (case / "out" / "ok.json.tmp").exists()
+    assert common.write_text_in_case(case, "out/notes.md", "n").read_text() == "n"
+    outside = tmpdir() / "secret.png"
+    outside.write_bytes(b"x")
+    (case / "proj" / "m" / "rerender").mkdir(parents=True)
+    (case / "proj" / "m" / "rerender" / "view_01.png").symlink_to(outside)
+    from mvb2r import crops
+    try:
+        crops.rerender_path(case, "m", "view_01")
+    except common.StageError as e:
+        assert "outside the case" in str(e)
+    else:
+        raise AssertionError("a re-render outside the case was accepted")
+
+
 def test_image_pixel_cap_is_checked_from_the_header():
     import numpy as np
     d = tmpdir()
