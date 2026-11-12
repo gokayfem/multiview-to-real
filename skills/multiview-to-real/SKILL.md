@@ -233,7 +233,8 @@ and a call that would exceed it is refused before it starts.
 | `references/seams.md` | the fusion methods, how they are scored, the leak count, the fix rounds |
 | `references/geometry.md` | assets, contact, UV overlap repair, refit by carving |
 | `references/pbr.md` | de-lighting, materials, the rig fit, direct-light patch synthesis, relight honesty |
-| `references/validation.md` | round trip, leave-one-view-out, the fresh reviewer, full-size crops and rounds, the report |
+| `references/validation.md` | round trip, leave-one-view-out, the fresh reviewer, full-size crops and rounds, checking a diagnosis, the report |
+| `references/video-capture.md` | someone proposes video frames instead of a view sheet: what was measured, what is not built |
 | `references/conventions.md` | coordinates, depth, pixel convention, file formats, case layout |
 | `references/lessons.md` | what went wrong in the first run, its fix rounds and a later rigid scene, and the rule each failure became |
 

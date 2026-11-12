@@ -525,6 +525,35 @@ of them qualify statements made after the first run. A global warp was again the
 objects a displacement per object was measurable and worth correcting; this repository has no stage for that
 yet. And brightness between views differed by a factor, not by a few percent.
 
+## Video frames instead of a view sheet (explored, not a stage)
+
+On 2026-11-12 the first run's room was captured a second way: the grey scene rendered as a driving video along
+a known camera path, re-rendered photoreal by a reference-to-video model, and its frames projected instead of
+six separate views. None of it is in `mvb2r.py`; the notes are in
+[`references/video-capture.md`](skills/multiview-to-real/references/video-capture.md).
+
+- **Frames of one video agree with each other.** COLMAP on 109 frames alone registered all of them (1.09 px),
+  and matches on the person survived its geometric check as often as matches on the room (377 against 338 per
+  1,000 keypoints three frames apart). The six stills had agreed at 0.16 to 0.24 in fine detail.
+- **The proxy already fits a driven video.** Part outlines differed from the video's by 0.3 to 3.8 mm and
+  sparse points lay 4.5 to 7.5 mm from the surface. A reshape was tried, made the outlines worse and was
+  dropped.
+- **The faults of the first projection were in sampling and fusion.** Gating each sample by the frame's own
+  mask, keeping 5 px from edges and blending the low band without hard switches removed the smudges on the
+  fingertips and the blocky floor. A light line at the collar, a patch at the hair edge and a pale furniture-leg
+  tip remain, the hair is still a shell, and the textures hold about half the fine detail of the photographs.
+- **Three diagnoses were wrong before a second measurement caught them:** cameras 40 cm off (one focal length
+  had been given for a clip that zooms), re-solved cameras better (judged on the matches they were fitted to),
+  and a shape off by centimetres (measured along the viewing ray).
+
+<p align="center"><img src="gallery/video-second-pass.jpg" width="100%" alt="Hair edge and face, hands, and shoes with floor: the photograph, the first projection of the video frames and the second pass"></p>
+
+<p align="center"><sub>Photograph, first projection of the video frames, second pass. The smudges on the fingertips and the blocky floor are gone; the hands are soft, and the shoe toe and the sofa leg keep pale rims.</sub></p>
+
+<p align="center"><img src="gallery/video-checks.jpg" width="100%" alt="Points COLMAP could follow on one video frame, match survival by frame distance for room, furniture and person, the camera paths from above, and the distance of points on the person from the proxy"></p>
+
+<p align="center"><sub>COLMAP on the video alone: what it could follow, how detail survives with frame distance, its cameras against the fitted ones, and where points on the person sit relative to the proxy (panel 4 uses the along-ray distance that overstates the misfit; see the reference page).</sub></p>
+
 ## Security and privacy
 
 - **What leaves your machine.** `generate`, `refine`, `resync` and `probe --check-size` upload images only, and
@@ -673,6 +702,12 @@ scene ends up looking real; that is what the contact sheets, the coverage number
   2144 px) from their clay, each by its own amount, and that run's scripts corrected it with one bounded map
   per object. Nothing here does that, and how this repository's gates and scores behave on that scene has not
   been measured.
+- **Video capture is not implemented.** The exploration above was run with scripts tied to its scene; this
+  toolkit has no stage for a driving video, per-frame cameras or frame fusion.
+- **Feathering runs in the texture atlas and is not limited to one UV island.** `uv_blur` (view weights, gains
+  and the low band used for scoring) lets islands closer than about three blur widths influence each other.
+  On the video route the same kind of blur, applied to colour, put blotches on a face mapped as many small
+  islands. Its effect on this toolkit's own outputs has not been measured.
 - **A missing or refused external world image** (an HDRI linked from outside the input's folder, or a relative
   path that was not copied) is replaced by a neutral grey world with a warning, so the clay lighting differs
   from the input's (see Security and privacy).

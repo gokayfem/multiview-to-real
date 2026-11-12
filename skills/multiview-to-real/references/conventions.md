@@ -14,6 +14,9 @@ copied into every case.
   w2c[:3, :]`.
 - **Pixels:** the origin is the top-left corner of the top-left pixel; u to the right, v down; the centre of
   pixel (i, j) is at (i + 0.5, j + 0.5). Row 0 is the top row of the image as a normal image reader returns it.
+  The pixel under a projected point (u, v) is therefore `floor(u), floor(v)`; rounding picks the neighbour for
+  half of all points. OpenCV's own camera functions (rectification, remapping, pose solvers) put pixel centres
+  at whole numbers: give them `cx - 0.5`, `cy - 0.5`.
 - **Depth:** `depth_z` is camera-axis Z in metres (distance along the optical axis, positive in front), never
   ray length. In a room the two differ by tens of centimetres (up to 0.91 m in the first run), so confusing them
   breaks every visibility test. `views` proves it per case: `depth_z - Zc` must be at float precision and the

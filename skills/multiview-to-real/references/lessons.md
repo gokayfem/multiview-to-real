@@ -265,6 +265,48 @@ repository does not have, the entry says so.
   44% of the top, 28% of the floor's upper face and 13% of the floor, because backs, undersides and faces
   pressed against other objects count in the whole. Rule: report both, and say which one a sentence uses.
 
+## Video capture
+
+From the exploration of 2026-11-12 on the first run's room (`references/video-capture.md`); not a stage of
+this toolkit.
+
+- **Frames of one video agree; separately generated stills do not.** Structure from motion on 109 video frames
+  alone registered every frame (1.09 px), and matches on the person survived its geometric check as often as
+  matches on the room (377 against 338 per 1,000 keypoints three frames apart). The six stills had agreed at
+  0.16 to 0.24 in fine detail. Rule: when views must agree in detail, take them from one generation.
+- **A zooming clip needs each frame's own intrinsics.** With one focal length for a clip that zooms from 1050
+  to 1825 px, a free solve put known cameras 39 to 44 cm off; with per-frame focal lengths, 1 to 4 cm. The
+  wrong result read like a property of the video. Rule: a camera matrix belongs to a frame, and a free solve is
+  checked against every camera that is known before anything is concluded from it.
+- **Short pinned segments follow the path; long shots drift.** A 12 s shot was off the clay's timing by 4 to
+  67 frames depending on the seed; 4 s segments pinned at both ends to stills, by 1 to 3.
+- **A driven video keeps the clay's outlines.** Part outlines differed from the video's by 0.3 to 3.8 mm and
+  sparse points lay 4.5 to 7.5 mm from the proxy. A reshape driven by a depth reading made the outlines worse
+  (overlap 0.86 to 0.65). Rule: reshape only when outlines and depth both ask for it.
+- **Along the viewing ray, a small misfit looks large.** The same hair that is 4.5 mm from the proxy,
+  perpendicular to it, read as 2.4 cm along the ray; the sweater as up to 9 cm. Rule: measure misfit
+  perpendicular to the surface and against outlines.
+- **A quantity fitted to data looks good on that data.** Cameras re-solved from feature matches landed those
+  matches tighter (4.2 against 5.1 mm) and were level on the independent test (4.13 against 4.06). Rule: name
+  the independent check, and without one do not claim an improvement.
+- **One measure is not a diagnosis.** Three causes were reported and then withdrawn: cameras 40 cm off (one
+  focal length for a zooming clip), new cameras better (judged on their own fitting data), shape off by
+  centimetres (measured along the ray). Each fell to a second, different measurement. Rule: before acting on a
+  cause, confirm it another way.
+- **Gate by what the frame shows.** Sampling by clay ids alone put trouser colour on fingertips and
+  neighbouring colour along the hair. Requiring the frame's own mask to agree, and keeping 5 px from edges of
+  both, removed the smudges (skin error near boundaries 20.3 to 18.2).
+- **Blend inside one UV island.** Switching source frames per texel left blocky patches on the floor; a
+  Gaussian-weighted low band removed them. Feathering that crossed UV islands put blotches on a face mapped as
+  many small islands. This toolkit's `uv_blur` (weights, gains, the scoring low band) is not limited to one
+  island either; see the known limits.
+- **A speckled control inflates sharpness.** Against a texture made of one nearest sample per texel, the second
+  pass scored 0.77 where the first scored 0.86; at a 1.5 px scale the two were level (0.966 against 0.955).
+  Rule: state the scale of a sharpness figure and look at the control.
+- **Monocular depth is right inside an object and wrong between objects.** After an affine fit, a monocular
+  estimate left 3 to 13 cm between the person and the room; its normals agreed with the scene at 0.96. Dense
+  stereo between two frames with known cameras agreed to 4 to 11 mm up close, where the camera moves sideways.
+
 ## Process
 
 - **Freeze before comparing.** Every method comparison used the same frozen targets, cameras, geometry and

@@ -120,3 +120,20 @@ that apply to this case.
 
 A case is done when the report is written and the user has seen the sheets; what to improve next is the
 user's decision.
+
+## 6. Checking a diagnosis
+
+A number that explains a defect is a claim, and it gets the same treatment as a result.
+
+- **Two measures.** Confirm a cause with a second measurement of a different kind before acting on it (matches
+  and outlines, perpendicular distance and overlap, a figure and a look at full size).
+- **Independent data.** A quantity adjusted on some data is not judged on that data. Hold something out, and
+  say which check was independent. When holding a known camera out, start it from a solve that never saw it.
+- **The right distance.** Misfit between a proxy and what was photographed is measured perpendicular to the
+  surface and against outlines. Along the viewing ray it is inflated at grazing angles.
+- **Known values first.** Whatever is known exactly (cameras of pinned frames, flat surfaces, focal lengths) is
+  compared with the estimate before the estimate is used to judge anything else.
+- **The scale of a figure.** A sharpness or agreement figure names its scale and its control; a control made of
+  single samples is speckled and flatters nothing that is blended.
+
+The exploration in `references/video-capture.md` broke each of these once.

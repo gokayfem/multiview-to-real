@@ -35,6 +35,26 @@ was not re-run for it (no test reads the documents).
   object. How its gates and scores behave on the third input has not been measured; running the CLI on that
   scene with `targets --images` is the open next step.
 
+The findings of an exploration of video capture on the first run's room (a driving video of the grey scene
+re-rendered by a reference-to-video model, its frames projected instead of six separate views). It was made
+with experiment scripts tied to that scene, not with this repository's CLI. Documentation only: no stage
+changed.
+
+- `references/video-capture.md` (new): what was run, what each check showed (frames of one video agree with
+  each other where separate stills do not; a zooming clip needs per-frame intrinsics; a driven video keeps the
+  clay's outlines, so the proxy fits; dense stereo from frame pairs and its limits), the two projection passes
+  with their numbers, and what a stage would need.
+- `references/lessons.md`: eleven new entries under "Video capture", among them three diagnoses that were
+  reported and then withdrawn after a second measurement.
+- `references/validation.md`: section 6, "Checking a diagnosis" (two measures of different kinds, independent
+  data, the right distance, known values first, the scale of a figure).
+- `references/conventions.md`: the pixel under a projected point is `floor`, not a rounding; OpenCV's camera
+  functions want `cx - 0.5`, `cy - 0.5`. This toolkit's own lookups were checked and already follow it.
+- README: a section on the exploration with two gallery images, and two known limits (video capture is not
+  implemented; `uv_blur` feathers across UV islands).
+- Tests (`python3 tests/run_tests.py`, 2026-11-12, macOS, Blender 5.0.1 found): 231 of 231 passed, 0 skipped
+  (run on the renamed tree with these documents in place).
+
 ## [0.2.0] — 2026-11-12
 
 The fix rounds that followed an independent review of the first run, ported into the toolkit, reviewed and run
