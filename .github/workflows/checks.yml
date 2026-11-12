@@ -22,7 +22,8 @@ jobs:
           python-version: "3.12"
       # Only what the pure-numeric code imports. fal-client and Blender are not needed here; the
       # tests run offline with no key, and the Blender round trip is skipped when Blender is not found.
-      - run: pip install numpy scipy scikit-image Pillow opencv-python-headless
+      # opencv 5.x wheels have no OpenEXR codec; the pass files (depth, position, normals) are EXR.
+      - run: pip install numpy scipy scikit-image Pillow "opencv-python-headless<5"
       - run: python tests/run_tests.py
       - run: python skills/multiview-blockout-to-real/scripts/mvb2r.py --help
       - run: python -m compileall -q skills/multiview-blockout-to-real/scripts

@@ -2,5 +2,5 @@ numpy
 scipy
 scikit-image
 Pillow
-opencv-python-headless
+opencv-python-headless<5  # 5.x wheels ship without the OpenEXR codec the pass files need
 fal-client
