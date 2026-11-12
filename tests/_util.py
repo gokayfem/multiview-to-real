@@ -1,12 +1,10 @@
 """Shared bits of the test runner: Skip, optional imports, a synthetic case with exact passes (no Blender)."""
 import importlib
-import os
 import tempfile
 from pathlib import Path
 
 import numpy as np
 
-os.environ.setdefault("OPENCV_IO_ENABLE_OPENEXR", "1")
 
 
 class Skip(Exception):
@@ -104,9 +102,9 @@ def synthetic_case(n_views: int = 3, size: int = 160, generator: str = "mock") -
         vd.mkdir(parents=True)
         p = render_passes(cam)
         cv2.imwrite(str(vd / "object_id.png"), p["oid"])
-        cv2.imwrite(str(vd / "depth_z.exr"), p["depth"])
-        cv2.imwrite(str(vd / "position_world.exr"), p["pos"][..., ::-1].copy())
-        cv2.imwrite(str(vd / "normal_world.exr"), p["nrm"][..., ::-1].copy())
+        common.write_exr(vd / "depth_z.exr", p["depth"])
+        common.write_exr(vd / "position_world.exr", p["pos"])
+        common.write_exr(vd / "normal_world.exr", p["nrm"])
         shade = (0.3 + 0.7 * np.clip(p["nrm"] @ np.array([0.3, -0.5, 0.8]), 0, 1)) * (p["oid"] > 0)
         clay = (np.repeat(shade[..., None], 3, -1) * 200 + 30).astype(np.uint8)
         clay[..., 0] = clay[..., 0] + np.uint8(cams.index(cam))   # distinct files

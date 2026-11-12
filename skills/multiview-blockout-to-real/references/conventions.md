@@ -39,8 +39,10 @@ text that repeats the rules above.
 
 The data passes are one sample at the pixel centre: no anti-aliasing across edges, no denoising.
 
-EXR gotchas: a single-channel EXR written by Blender stores the value in a channel named `Y`; OpenCV reads
-RGB EXR files as BGR and needs `OPENCV_IO_ENABLE_OPENEXR=1` before import. `common` handles both.
+EXR files are read and written by the tool's own reader (`mvb2r/exrio.py`: single-part scanline files, HALF or
+FLOAT channels, compression NONE, ZIPS or ZIP), so no OpenEXR codec is needed in OpenCV or anywhere else. A
+single-channel EXR written by Blender stores the value in a channel named `Y`; three channels come back as RGB.
+Other EXR variants (tiled, multi-part, PIZ, DWA) are refused with a message that says how to re-save them.
 
 ## Objects
 

@@ -15,6 +15,11 @@ jobs:
   tests:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        # 5.x wheels ship without an OpenEXR codec; EXR IO is built in (mvb2r/exrio.py), so both must pass.
+        opencv: ["opencv-python-headless<5", "opencv-python-headless"]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
@@ -22,8 +27,7 @@ jobs:
           python-version: "3.12"
       # Only what the pure-numeric code imports. fal-client and Blender are not needed here; the
       # tests run offline with no key, and the Blender round trip is skipped when Blender is not found.
-      # opencv 5.x wheels have no OpenEXR codec; the pass files (depth, position, normals) are EXR.
-      - run: pip install numpy scipy scikit-image Pillow "opencv-python-headless<5"
+      - run: pip install numpy scipy scikit-image Pillow "${{ matrix.opencv }}"
       - run: python tests/run_tests.py
       - run: python skills/multiview-blockout-to-real/scripts/mvb2r.py --help
       - run: python -m compileall -q skills/multiview-blockout-to-real/scripts

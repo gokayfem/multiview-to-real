@@ -22,6 +22,10 @@ First version.
   (about 70 s at 320 px, 4 automatic views), and the first run's real 15-object scene with its six cameras and
   existing generated images through `targets --images`, `consistency`, `project` and `score` (low-band agreement
   3.40 ΔE against the experiment's 3.38). Implemented but not yet exercised: `probe --check-size`, glTF, FBX, USD, PLY and STL inputs and `--group-by`.
+- Found by the first CI run: `opencv-python-headless` 5.0 wheels have no OpenEXR codec, so every test that
+  touched a depth, position or normal pass failed on the runner. EXR reading and writing is now built in
+  (`mvb2r/exrio.py`, pure Python and numpy, bit-identical to OpenCV 4.13 on the pass files); CI runs the
+  suite against OpenCV 4.x and 5.x.
 - Fixed before release, found in review: `run` order (`probe` now runs before `grid`; `resync` is opt-in);
   the CI key check; a leave-one-view-out leak that favoured `register`; a flipped automatic camera arc;
   containment of external images and linked libraries (refused outside the input's folder unless

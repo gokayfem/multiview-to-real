@@ -5,7 +5,6 @@
 """
 import argparse
 import json
-import os
 import sys
 from pathlib import Path
 
@@ -135,5 +134,4 @@ def main():
 
 
 if __name__ == "__main__":
-    os.environ.setdefault("OPENCV_IO_ENABLE_OPENEXR", "1")
     main()

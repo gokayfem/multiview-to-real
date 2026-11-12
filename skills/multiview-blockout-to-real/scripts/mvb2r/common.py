@@ -22,9 +22,11 @@ import json
 import os
 import re
 import shutil
+import struct
 import subprocess
 import sys
 import unicodedata
+import zlib
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -307,7 +309,7 @@ def clean_text(text, limit: int = 200) -> str:
 
 # ---------------------------------------------------------------- images (lazy numpy / cv2)
 def _cv2():
-    os.environ.setdefault("OPENCV_IO_ENABLE_OPENEXR", "1")
+    """OpenCV for PNG / JPEG and image maths only; EXR goes through mvb2r.exrio on every platform."""
     import cv2
     return cv2
 
@@ -355,15 +357,37 @@ def read_gray(path) -> "np.ndarray":
 
 
 def read_exr(path) -> "np.ndarray":
-    """EXR -> float32; 1 channel stays (H, W); 3 channels come back in RGB order (cv2 reads BGR)."""
-    cv2 = _cv2()
-    a = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
-    if a is None:
-        raise StageError(f"cannot read EXR {path} (OpenCV built without OpenEXR?)")
-    a = a.astype("float32")
-    if a.ndim == 3:
-        a = a[..., :3][..., ::-1].copy()
-    return a
+    """EXR -> float32 via the built-in reader (mvb2r.exrio, no codec needed): a single channel (or "Y") -> (H, W);
+    R, G, B -> (H, W, 3) in RGB order. Covers the dataWindow."""
+    import numpy as np
+    from . import exrio
+    try:
+        planes, _info = exrio.read_channels(path)
+    except FileNotFoundError as e:
+        raise StageError(f"missing EXR {path}") from e
+    except (exrio.ExrError, struct.error, zlib.error, IndexError) as e:
+        raise StageError(f"cannot read EXR {Path(path).name}: {e}") from e
+    if {"R", "G", "B"} <= set(planes):
+        return np.dstack([planes[c] for c in ("R", "G", "B")])
+    if "Y" in planes:
+        return planes["Y"]
+    if len(planes) == 1:
+        return next(iter(planes.values()))
+    raise StageError(f"{Path(path).name}: channels {sorted(planes)} are neither Y nor R, G, B")
+
+
+def write_exr(path, arr, compression: str = "ZIP") -> None:
+    """float32 (H, W) -> channel Y, (H, W, 3) RGB -> channels R, G, B; ZIP (default) or NONE."""
+    import numpy as np
+    from . import exrio
+    a = np.asarray(arr, np.float32)
+    if a.ndim == 2:
+        planes = {"Y": a}
+    elif a.ndim == 3 and a.shape[2] == 3:
+        planes = {"R": a[..., 0], "G": a[..., 1], "B": a[..., 2]}
+    else:
+        raise StageError(f"write_exr: expected (H, W) or (H, W, 3), got {a.shape}")
+    exrio.write(path, planes, compression)
 
 
 def image_size(path) -> tuple[int, int]:

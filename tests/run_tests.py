@@ -20,7 +20,27 @@ sys.path.insert(0, os.path.join(os.path.dirname(HERE), "skills", "multiview-bloc
 from _util import Skip  # noqa: E402
 
 
+def forbid_cv2_exr() -> None:
+    """MVB2R_FORBID_CV2_EXR=1: make OpenCV refuse every .exr (simulates opencv-python-headless 5 wheels)."""
+    import cv2
+    real_read, real_write = cv2.imread, cv2.imwrite
+
+    def imread(path, *a, **k):
+        if str(path).lower().endswith(".exr"):
+            raise cv2.error("EXR codec disabled for this test run (MVB2R_FORBID_CV2_EXR=1)")
+        return real_read(path, *a, **k)
+
+    def imwrite(path, *a, **k):
+        if str(path).lower().endswith(".exr"):
+            raise cv2.error("EXR codec disabled for this test run (MVB2R_FORBID_CV2_EXR=1)")
+        return real_write(path, *a, **k)
+    cv2.imread, cv2.imwrite = imread, imwrite
+
+
 def main():
+    if os.environ.get("MVB2R_FORBID_CV2_EXR") == "1":
+        forbid_cv2_exr()
+        print("  (OpenCV EXR IO forbidden: MVB2R_FORBID_CV2_EXR=1)")
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     mods = sorted(f[5:-3] for f in os.listdir(HERE) if f.startswith("test_") and f.endswith(".py"))
     if args:

@@ -71,9 +71,8 @@ def test_image_and_exr_io():
     common.write_rgb(d / "x.png", rgb)
     assert np.array_equal(common.read_rgb(d / "x.png"), rgb)
     assert common.image_size(d / "x.png") == (10, 8)
-    import cv2
     a = np.dstack([np.full((4, 5), v, np.float32) for v in (1.0, 2.0, 3.0)])
-    cv2.imwrite(str(d / "p.exr"), a[..., ::-1].copy())
+    common.write_exr(d / "p.exr", a)
     back = common.read_exr(d / "p.exr")
     assert np.allclose(back[0, 0], [1, 2, 3])
 

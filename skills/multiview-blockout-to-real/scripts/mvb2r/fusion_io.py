@@ -12,10 +12,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-os.environ.setdefault("OPENCV_IO_ENABLE_OPENEXR", "1")
-
-import cv2  # noqa: E402
-import numpy as np  # noqa: E402
+import cv2
+import numpy as np
 
 LUMW = np.array([0.2126, 0.7152, 0.0722], np.float32)
 BLENDER_DIR = Path(__file__).resolve().parents[1] / "blender"

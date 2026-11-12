@@ -228,6 +228,11 @@ def run_doctor(_args) -> int:
         except ImportError:
             common.say(f"  {'MISSING ' if need else 'optional'} {mod}")
             ok &= not need
+    try:
+        import cv2
+        common.say(f"  ok       OpenCV {cv2.__version__} (PNG / JPEG and image maths; EXR IO is built in, no codec needed)")
+    except ImportError:
+        pass
     b = common.find_blender()
     if b:
         v = common.blender_version(b)

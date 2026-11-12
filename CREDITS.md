@@ -35,7 +35,7 @@ stated here, read the model card or project page before relying on it.
 |---|---|---|---|
 | Blender, Cycles | Blender Foundation, Blender Python API (4.2+; developed on 5.0.1) | ingest, blockout, cameras, passes, clay and final renders, both `.blend` outputs | GPL-2.0-or-later |
 | NumPy, SciPy, scikit-image | their projects | rasterisation, visibility, fusion, graph cuts (SciPy maximum flow), metrics | BSD-3-Clause |
-| OpenCV (`opencv-python-headless`) | the OpenCV project | image IO including EXR, masks, alignment | Apache-2.0 |
+| OpenCV (`opencv-python-headless`) | the OpenCV project | PNG and JPEG IO, masks, alignment | Apache-2.0 |
 | Pillow | the Pillow project | image IO and contact sheets | HPND |
 | fal-client | fal | every paid model call | see the project page |
 | ffmpeg | the FFmpeg project | camera-move and tour videos (called as a program) | LGPL-2.1-or-later / GPL |
